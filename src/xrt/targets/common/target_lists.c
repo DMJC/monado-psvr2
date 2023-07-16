@@ -48,6 +48,10 @@
 #include "rift/rift_interface.h"
 #endif
 
+#ifdef XRT_BUILD_DRIVER_PSVR2
+#include "psvr2/psvr2_interface.h"
+#endif
+
 #ifdef XRT_BUILD_DRIVER_RIFT_S
 #include "rift_s/rift_s_interface.h"
 #endif
@@ -203,6 +207,10 @@ struct xrt_prober_entry target_entry_list[] = {
 #ifdef XRT_BUILD_DRIVER_ROKID
     {ROKID_VID, ROKID_PID, rokid_found, "Rokid Air or Max", "rokid"},
 #endif // XRT_BUILD_DRIVER_ROKID
+
+#ifdef XRT_BUILD_DRIVER_PSVR2
+    {PSVR2_VID, PSVR2_PID, psvr2_found, "PlayStation VR2 HMD", "psvr2"},
+#endif // XRT_BUILD_DRIVER_PSVR2
 
 #ifdef XRT_BUILD_DRIVER_HYDRA
     {HYDRA_VID, HYDRA_PID, hydra_found, "Razer Hydra", "hydra"},

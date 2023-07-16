@@ -138,6 +138,10 @@ if(XRT_BUILD_DRIVER_PSVR)
 	target_link_libraries(target_lists PRIVATE drv_psvr)
 endif()
 
+if(XRT_BUILD_DRIVER_PSVR2)
+	target_link_libraries(target_lists PRIVATE drv_psvr2)
+endif()
+
 if(XRT_BUILD_DRIVER_REALSENSE)
 	target_link_libraries(target_lists PRIVATE drv_realsense)
 endif()
