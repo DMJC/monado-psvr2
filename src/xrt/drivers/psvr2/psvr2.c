@@ -192,23 +192,24 @@ psvr2_compute_distortion(struct xrt_device *xdev, uint32_t view, float u, float 
 	return u_compute_distortion_panotools(&psvr2->vals, u, v, result);
 }
 
-static void
+static xrt_result_t
 psvr2_hmd_update_inputs(struct xrt_device *xdev)
 {
 	// Empty, you should put code to update the attached input fields (if any)
+	return XRT_SUCCESS;
 }
 
-static void
+static xrt_result_t
 psvr2_hmd_get_tracked_pose(struct xrt_device *xdev,
                            enum xrt_input_name name,
-                           uint64_t at_timestamp_ns,
+                           int64_t at_timestamp_ns,
                            struct xrt_space_relation *out_relation)
 {
 	struct psvr2_hmd *hmd = psvr2_hmd(xdev);
 
 	if (name != XRT_INPUT_GENERIC_HEAD_POSE) {
 		PSVR2_ERROR(hmd, "unknown input name");
-		return;
+		return XRT_ERROR_INPUT_UNSUPPORTED;
 	}
 
 	os_mutex_lock(&hmd->data_lock);
@@ -219,12 +220,14 @@ psvr2_hmd_get_tracked_pose(struct xrt_device *xdev,
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_VALID_BIT |
 	    XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT);
 	os_mutex_unlock(&hmd->data_lock);
+
+	return XRT_SUCCESS;
 }
 
 static void
 psvr2_hmd_get_view_poses(struct xrt_device *xdev,
                          const struct xrt_vec3 *default_eye_relation,
-                         uint64_t at_timestamp_ns,
+                         int64_t at_timestamp_ns,
                          uint32_t view_count,
                          struct xrt_space_relation *out_head_relation,
                          struct xrt_fov *out_fovs,
