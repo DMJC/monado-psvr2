@@ -241,6 +241,7 @@ psvr2_hmd_get_view_poses(struct xrt_device *xdev,
                          struct xrt_pose *out_poses)
 {
 	struct psvr2_hmd *hmd = psvr2_hmd(xdev);
+
 	os_mutex_lock(&hmd->data_lock);
 	if (hmd->ipd_updated) {
 		hmd->info.lens_horizontal_separation_meters = hmd->ipd_mm / 1000.0;
@@ -249,7 +250,10 @@ psvr2_hmd_get_view_poses(struct xrt_device *xdev,
 	}
 	os_mutex_unlock(&hmd->data_lock);
 
-	u_device_get_view_poses(xdev, default_eye_relation, at_timestamp_ns, view_count, out_head_relation, out_fovs,
+	struct xrt_vec3 eye_relation = *default_eye_relation;
+	eye_relation.x = hmd->info.lens_horizontal_separation_meters;
+
+	u_device_get_view_poses(xdev, &eye_relation, at_timestamp_ns, view_count, out_head_relation, out_fovs,
 	                        out_poses);
 }
 
@@ -297,7 +301,7 @@ process_status_report(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 	hmd->proximity_sensor = hdr->prox_sensor_flag;
 	hmd->passthrough_button = hdr->passthrough_button;
 
-	hmd->ipd_updated = (hmd->ipd_mm != hdr->ipd_dial_mm);
+	hmd->ipd_updated |= (hmd->ipd_mm != hdr->ipd_dial_mm);
 	hmd->ipd_mm = hdr->ipd_dial_mm;
 
 	int i = 0;
