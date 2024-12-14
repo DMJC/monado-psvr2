@@ -1,5 +1,6 @@
 // Copyright 2020-2021, Collabora, Ltd.
 // Copyright 2023, Jan Schmidt
+// Copyright 2024, Joel Valenciano
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -8,6 +9,7 @@
  * @author Jan Schmidt <jan@centricular.com>
  * @author Jakob Bornecrantz <jakob@collabora.com>
  * @author Ryan Pavlik <ryan.pavlik@collabora.com>
+ * @author Joel Valenciano <joelv1907@gmail.com>
  * @ingroup drv_psvr2
  */
 
@@ -138,6 +140,11 @@ struct psvr2_hmd
 	struct libusb_transfer *relocalizer_xfer;
 	/* VD EP11 (bulk) transfer */
 	struct libusb_transfer *vd_xfer;
+
+	/* Distortion calibration parameters, to be used with
+	 * psvr2_compute_distortion_asymmetric. Very specific to
+	 * PS VR2. */
+	float distortion_calibration[8];
 };
 
 
@@ -187,9 +194,9 @@ psvr2_hmd_destroy(struct xrt_device *xdev)
 static bool
 psvr2_compute_distortion(struct xrt_device *xdev, uint32_t view, float u, float v, struct xrt_uv_triplet *result)
 {
-	struct psvr2_hmd *psvr2 = psvr2_hmd(xdev);
+	struct psvr2_hmd *hmd = psvr2_hmd(xdev);
 
-	return u_compute_distortion_panotools(&psvr2->vals, u, v, result);
+	return psvr2_compute_distortion_asymmetric(hmd->distortion_calibration, result, view, u, v);
 }
 
 static xrt_result_t
@@ -888,6 +895,48 @@ psvr2_usb_stop(struct psvr2_hmd *hmd)
 	}
 }
 
+static void
+psvr2_setup_distortion_and_fovs(struct psvr2_hmd *hmd)
+{
+	/* Each eye has an X offset, a Y offset, and two scale
+	 * factors (the main scale factor, and another that
+	 * allows for tilting the view, set to 0 for no tilt).
+	 * It seems to be stored like this:
+	 * struct calibration_t {
+	 *	float offsetx_left;
+	 *	float offsety_left;
+	 *	float offsetx_right;
+	 *	float offsety_right;
+	 *	float scale1_left;
+	 *	float scale2_left;
+	 *	float scale1_right;
+	 *	float scale2_right;
+	 * } calibration;
+	 * */
+	float left[] = {-0.107, 0.005, 1, 0};
+	float right[] = {0.105, -0.005, 1, 0};
+
+	hmd->distortion_calibration[0] = left[0];
+	hmd->distortion_calibration[1] = left[1];
+	hmd->distortion_calibration[2] = right[0];
+	hmd->distortion_calibration[3] = right[1];
+	hmd->distortion_calibration[4] = left[2];
+	hmd->distortion_calibration[5] = left[3];
+	hmd->distortion_calibration[6] = right[2];
+	hmd->distortion_calibration[7] = right[3];
+
+	struct xrt_fov *fovs = hmd->base.hmd->distortion.fov;
+	fovs[0].angle_up = 53.0f * (M_PI / 180.0f);
+	fovs[0].angle_down = -53.0f * (M_PI / 180.0f);
+	fovs[0].angle_left = -61.5f * (M_PI / 180.0f);
+	fovs[0].angle_right = 43.5f * (M_PI / 180.0f);
+
+	fovs[1].angle_up = fovs[0].angle_up;
+	fovs[1].angle_down = fovs[0].angle_down;
+	fovs[1].angle_left = -fovs[0].angle_right;
+	fovs[1].angle_right = -fovs[0].angle_left;
+}
+
 struct xrt_device *
 psvr2_hmd_create(struct xrt_prober_device *xpdev)
 {
@@ -944,30 +993,9 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	hmd->base.hmd->screens[0].nominal_frame_interval_ns = time_s_to_ns(1.0f / 120.0f);
 	hmd->base.compute_distortion = psvr2_compute_distortion;
 
-	// Panotools parameters taken from PSVR v1
-	{
-		struct u_panotools_values vals = {0};
-
-		vals.distortion_k[0] = 0.75f;
-		vals.distortion_k[1] = -0.01f;
-		vals.distortion_k[2] = 0.75f;
-		vals.distortion_k[3] = 0.0f;
-		vals.distortion_k[4] = 3.8f;
-		vals.aberration_k[0] = 0.999f;
-		vals.aberration_k[1] = 1.008f;
-		vals.aberration_k[2] = 1.018f;
-		vals.scale = 1.2f * (4000 / 2.0f);
-		vals.viewport_size.x = (4000 / 2.0f);
-		vals.viewport_size.y = (2040);
-		vals.lens_center.x = vals.viewport_size.x / 2.0f;
-		vals.lens_center.y = vals.viewport_size.y / 2.0f;
-
-		hmd->vals = vals;
-
-		struct xrt_hmd_parts *parts = hmd->base.hmd;
-		parts->distortion.models = XRT_DISTORTION_MODEL_COMPUTE;
-		parts->distortion.preferred = XRT_DISTORTION_MODEL_COMPUTE;
-	}
+	struct xrt_hmd_parts *parts = hmd->base.hmd;
+	parts->distortion.models = XRT_DISTORTION_MODEL_COMPUTE;
+	parts->distortion.preferred = XRT_DISTORTION_MODEL_COMPUTE;
 
 	// This default matches the default lens separation
 	hmd->ipd_mm = 65;
@@ -978,13 +1006,18 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	hmd->info.display.h_meters = 0.07f;
 	hmd->info.lens_horizontal_separation_meters = 0.13f / 2.0f;
 	hmd->info.lens_vertical_position_meters = 0.07f / 2.0f;
-	hmd->info.fov[0] = (float)(85.0 * (M_PI / 180.0));
-	hmd->info.fov[1] = (float)(85.0 * (M_PI / 180.0));
+	// These need to be set to avoid an error, but the fovs
+	// computed further down are preferred.
+	hmd->info.fov[0] = (float)(106.0 * (M_PI / 180.0));
+	hmd->info.fov[1] = (float)(106.0 * (M_PI / 180.0));
 
 	if (!u_device_setup_split_side_by_side(&hmd->base, &hmd->info)) {
 		PSVR2_ERROR(hmd, "Failed to setup basic device info");
 		goto cleanup;
 	}
+
+	psvr2_setup_distortion_and_fovs(hmd);
+
 	u_distortion_mesh_fill_in_compute(&hmd->base);
 
 	const struct xrt_pose slam_correction_pose = SLAM_POSE_CORRECTION;
