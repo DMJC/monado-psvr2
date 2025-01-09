@@ -15,12 +15,14 @@
 
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_tracking.h"
 
 #include "os/os_threading.h"
 #include "os/os_time.h"
 
 #include "math/m_api.h"
 #include "math/m_imu_3dof.h"
+#include "math/m_clock_tracking.h"
 #include "math/m_mathinclude.h"
 
 #include "util/u_misc.h"
@@ -99,13 +101,13 @@ struct psvr2_hmd
 	struct u_var_button camera_mode_btn;
 
 	/* IMU input data */
-	uint32_t last_vts; /* Last VTS timestamp */
+	uint32_t last_vts_us; //< Last VTS timestamp, in microseconds
 	uint16_t last_imu_ts;
 	struct xrt_vec3 last_gyro;
 	struct xrt_vec3 last_accel;
 
 	/* SLAM input data */
-	uint32_t last_slam_ts; // Timestamp
+	uint32_t last_slam_ts_us; //< Last slam timestamp, in microseconds
 	struct xrt_pose last_slam_pose;
 
 	struct xrt_pose slam_correction_pose;
@@ -145,6 +147,14 @@ struct psvr2_hmd
 	 * psvr2_compute_distortion_asymmetric. Very specific to
 	 * PS VR2. */
 	float distortion_calibration[8];
+
+	bool timestamp_initialized;
+
+	timepoint_ns last_vts_ns;
+	timepoint_ns last_slam_ns;
+	timepoint_ns system_zero_ns;
+
+	time_duration_ns hw2mono;
 };
 
 
@@ -220,12 +230,18 @@ psvr2_hmd_get_tracked_pose(struct xrt_device *xdev,
 	}
 
 	os_mutex_lock(&hmd->data_lock);
+
 	// Estimate pose at timestamp at_timestamp_ns!
+	timepoint_ns prediction_ns_mono = at_timestamp_ns - hmd->system_zero_ns;
+	timepoint_ns prediction_ns_hw = prediction_ns_mono - hmd->hw2mono;
+	(void)prediction_ns_hw; // @todo Use estimated time to predict the headset pose.
+
 	math_quat_normalize(&hmd->pose.orientation);
 	out_relation->pose = hmd->pose;
 	out_relation->relation_flags = (enum xrt_space_relation_flags)(
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_VALID_BIT |
 	    XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT);
+
 	os_mutex_unlock(&hmd->data_lock);
 
 	return XRT_SUCCESS;
@@ -258,42 +274,66 @@ psvr2_hmd_get_view_poses(struct xrt_device *xdev,
 }
 
 void
-process_imu_record(struct psvr2_hmd *hmd, int index, struct imu_usb_record *in)
+process_imu_record(struct psvr2_hmd *hmd, int index, struct imu_usb_record *in, timepoint_ns received_ns)
 {
 	struct imu_record imu_data;
 
-	imu_data.vts = __le32_to_cpu(in->vts);
+	imu_data.vts_us = __le32_to_cpu(in->vts_us);
 	for (int i = 0; i < 3; i++) {
 		imu_data.accel[i] = __le16_to_cpu(in->accel[i]);
 		imu_data.gyro[i] = __le16_to_cpu(in->gyro[i]);
 	}
 	imu_data.dp_frame_cnt = __le16_to_cpu(in->dp_frame_cnt);
 	imu_data.dp_line_cnt = __le16_to_cpu(in->dp_line_cnt);
-	imu_data.imu_ts = __le16_to_cpu(in->imu_ts);
+	imu_data.imu_ts_us = __le16_to_cpu(in->imu_ts_us);
 	imu_data.status = __le16_to_cpu(in->status);
 
 	PSVR2_TRACE(hmd,
 	            "Record #%d: TS %u vts %u "
 	            "accel { %d, %d, %d } gyro { %d, %d, %d } "
 	            "dp_frame_cnt %u dp_line_cnt %u status %u",
-	            index, imu_data.imu_ts, imu_data.vts, imu_data.accel[0], imu_data.accel[1], imu_data.accel[2],
+	            index, imu_data.imu_ts_us, imu_data.vts_us, imu_data.accel[0], imu_data.accel[1], imu_data.accel[2],
 	            imu_data.gyro[0], imu_data.gyro[1], imu_data.gyro[2], imu_data.dp_frame_cnt, imu_data.dp_line_cnt,
 	            imu_data.status);
 
-	hmd->last_vts = imu_data.vts; /* Last VTS timestamp */
-	hmd->last_imu_ts = imu_data.imu_ts;
+	uint32_t last_vts_us = hmd->last_vts_us;
 
-	hmd->last_gyro.x = DEG_TO_RAD(imu_data.gyro[0] * GYRO_SCALE);
-	hmd->last_gyro.y = DEG_TO_RAD(imu_data.gyro[1] * GYRO_SCALE);
-	hmd->last_gyro.z = DEG_TO_RAD(imu_data.gyro[2] * GYRO_SCALE);
+	hmd->last_vts_us = imu_data.vts_us; /* Last VTS timestamp */
+	hmd->last_imu_ts = imu_data.imu_ts_us;
 
-	hmd->last_accel.x = imu_data.accel[0] * ACCEL_SCALE;
-	hmd->last_accel.y = imu_data.accel[1] * ACCEL_SCALE;
-	hmd->last_accel.z = imu_data.accel[2] * ACCEL_SCALE;
+	hmd->last_gyro.x = -DEG_TO_RAD(imu_data.gyro[1] * GYRO_SCALE);
+	hmd->last_gyro.y = DEG_TO_RAD(imu_data.gyro[2] * GYRO_SCALE);
+	hmd->last_gyro.z = -DEG_TO_RAD(imu_data.gyro[0] * GYRO_SCALE);
+
+	hmd->last_accel.x = -imu_data.accel[1] * ACCEL_SCALE;
+	hmd->last_accel.y = imu_data.accel[2] * ACCEL_SCALE;
+	hmd->last_accel.z = -imu_data.accel[0] * ACCEL_SCALE;
+
+	if (hmd->timestamp_initialized) {
+		// @note Overflow expected and fine, since this is an unsigned subtraction
+		uint32_t vts_delta_us = imu_data.vts_us - last_vts_us;
+
+		hmd->last_vts_ns += (timepoint_ns)vts_delta_us * U_TIME_1US_IN_NS;
+
+		const timepoint_ns now_hw = hmd->last_vts_ns;
+		const timepoint_ns now_mono = received_ns - hmd->system_zero_ns;
+
+		const float IMU_FREQ = 2000.0f;
+		m_clock_offset_a2b(IMU_FREQ, now_hw, now_mono, &hmd->hw2mono);
+
+		struct xrt_imu_sample sample = {
+		    .timestamp_ns = hmd->last_vts_ns,
+		    .accel_m_s2 = {hmd->last_accel.x, hmd->last_accel.y, hmd->last_accel.z},
+		    .gyro_rad_secs = {hmd->last_gyro.x, hmd->last_gyro.y, hmd->last_gyro.z},
+		};
+
+		// TODO: process IMU samples into fusion
+		(void)sample;
+	}
 }
 
 static void
-process_status_report(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
+process_status_report(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read, timepoint_ns received_ns)
 {
 	struct status_record_hdr *hdr = (struct status_record_hdr *)buf;
 
@@ -313,7 +353,7 @@ process_status_report(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 		}
 
 		struct imu_usb_record *imu = (struct imu_usb_record *)cur;
-		process_imu_record(hmd, i, imu);
+		process_imu_record(hmd, i, imu, received_ns);
 
 		cur += sizeof(struct imu_usb_record);
 		i++;
@@ -356,6 +396,8 @@ status_xfer_cb(struct libusb_transfer *xfer)
 		return;
 	}
 
+	timepoint_ns received_ns = os_monotonic_get_ns();
+
 	/* handle status packet */
 	struct psvr2_hmd *hmd = xfer->user_data;
 	os_mutex_lock(&hmd->data_lock);
@@ -363,7 +405,7 @@ status_xfer_cb(struct libusb_transfer *xfer)
 		PSVR2_TRACE(hmd, "Status - %d bytes", xfer->actual_length);
 		PSVR2_TRACE_HEX(hmd, xfer->buffer, xfer->actual_length);
 
-		process_status_report(hmd, xfer->buffer, xfer->actual_length);
+		process_status_report(hmd, xfer->buffer, xfer->actual_length, received_ns);
 	}
 
 	libusb_submit_transfer(xfer);
@@ -457,7 +499,7 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 	assert(bytes_read >= (int)sizeof(struct slam_usb_record));
 
 	struct slam_record slam;
-	slam.ts = __le32_to_cpu(usb_data->ts);
+	slam.ts_us = __le32_to_cpu(usb_data->ts);
 
 	for (int i = 0; i < 3; i++) {
 		u.i = __le32_to_cpu(usb_data->pos[i]);
@@ -475,8 +517,22 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 	// assert(usb_data->unknown1 == 3 || usb_data->unknown1 == 0);
 
 	os_mutex_lock(&hmd->data_lock);
+
+	if (!hmd->timestamp_initialized) {
+		// Initialize all timestamps on first SLAM frame
+		hmd->system_zero_ns = os_monotonic_get_ns();
+		hmd->last_vts_ns = 0;
+		hmd->last_slam_ns = 0;
+		hmd->timestamp_initialized = true;
+	} else {
+		// @note Overflow expected and fine, since this is an unsigned subtraction
+		uint32_t slam_ts_delta_us = slam.ts_us - hmd->last_slam_ts_us;
+
+		hmd->last_slam_ns += (timepoint_ns)slam_ts_delta_us * U_TIME_1US_IN_NS;
+	}
+
 	//@todo: Manual axis correction should come from calibration somewhere I think
-	hmd->last_slam_ts = slam.ts;
+	hmd->last_slam_ts_us = slam.ts_us;
 	hmd->last_slam_pose.position.x = slam.pos[2];
 	hmd->last_slam_pose.position.y = slam.pos[1];
 	hmd->last_slam_pose.position.z = -slam.pos[0];
@@ -494,6 +550,20 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 
 	PSVR2_DEBUG(hmd, "SLAM - %d leftover bytes", (int)sizeof(usb_data->remainder));
 	PSVR2_DEBUG_HEX(hmd, usb_data->remainder, sizeof(usb_data->remainder));
+
+	if (!hmd->timestamp_initialized) {
+		int64_t now = os_monotonic_get_ns();
+		hmd->timestamp_initialized = true;
+		hmd->system_zero_ns = now;
+	}
+
+	struct xrt_pose_sample pose_sample = {
+	    .timestamp_ns = hmd->last_slam_ns,
+	    .pose = hmd->pose,
+	};
+
+	// TODO: process SLAM pose into fusion
+	(void)pose_sample;
 }
 
 static void LIBUSB_CALL
@@ -1046,13 +1116,13 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	}
 
 	u_var_add_gui_header(hmd, NULL, "Last IMU data");
-	u_var_add_ro_u32(hmd, &hmd->last_vts, "VTS Timestamp");
+	u_var_add_ro_u32(hmd, &hmd->last_vts_us, "VTS Timestamp");
 	u_var_add_u16(hmd, &hmd->last_imu_ts, "Timestamp");
 	u_var_add_ro_vec3_f32(hmd, &hmd->last_accel, "accel");
 	u_var_add_ro_vec3_f32(hmd, &hmd->last_gyro, "gyro");
 
 	u_var_add_gui_header(hmd, NULL, "Last SLAM data");
-	u_var_add_ro_u32(hmd, &hmd->last_slam_ts, "Timestamp");
+	u_var_add_ro_u32(hmd, &hmd->last_slam_ts_us, "Timestamp");
 	u_var_add_pose(hmd, &hmd->last_slam_pose, "Pose");
 
 	u_var_add_gui_header(hmd, NULL, "Status");
