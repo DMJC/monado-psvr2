@@ -848,31 +848,31 @@ psvr2_usb_stop(struct psvr2_hmd *hmd)
 	os_mutex_lock(&hmd->data_lock);
 	if (hmd->vd_xfer) {
 		ret = libusb_cancel_transfer(hmd->vd_xfer);
-		assert(ret == 0);
+		assert(ret == 0 || ret == LIBUSB_ERROR_NOT_FOUND);
 	}
 	if (hmd->relocalizer_xfer) {
 		ret = libusb_cancel_transfer(hmd->relocalizer_xfer);
-		assert(ret == 0);
+		assert(ret == 0 || ret == LIBUSB_ERROR_NOT_FOUND);
 	}
 	if (hmd->led_detector_xfer) {
 		ret = libusb_cancel_transfer(hmd->led_detector_xfer);
-		assert(ret == 0);
+		assert(ret == 0 || ret == LIBUSB_ERROR_NOT_FOUND);
 	}
 	for (int i = 0; i < NUM_CAM_XFERS; i++) {
 		if (hmd->camera_xfers[i]) {
 			ret = libusb_cancel_transfer(hmd->camera_xfers[i]);
-			assert(ret == 0);
+			assert(ret == 0 || ret == LIBUSB_ERROR_NOT_FOUND);
 		}
 	}
 	if (hmd->slam_xfer) {
 		ret = libusb_cancel_transfer(hmd->slam_xfer);
-		assert(ret == 0);
+		assert(ret == 0 || ret == LIBUSB_ERROR_NOT_FOUND);
 	}
 	if (hmd->status_xfer) {
 		ret = libusb_cancel_transfer(hmd->status_xfer);
-		assert(ret == 0);
+		assert(ret == 0 || ret == LIBUSB_ERROR_NOT_FOUND);
 	}
-	(void)ret;
+
 	os_mutex_unlock(&hmd->data_lock);
 
 	os_thread_helper_lock(&hmd->usb_thread);
