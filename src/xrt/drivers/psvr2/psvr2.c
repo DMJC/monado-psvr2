@@ -21,7 +21,6 @@
 #include "os/os_time.h"
 
 #include "math/m_api.h"
-#include "math/m_imu_3dof.h"
 #include "math/m_clock_tracking.h"
 #include "math/m_mathinclude.h"
 
@@ -114,11 +113,8 @@ struct psvr2_hmd
 	struct u_var_button slam_correction_set_btn;
 	struct u_var_button slam_correction_reset_btn;
 
-	struct m_imu_3dof fusion;
-
 	/* Display parameters */
 	struct u_device_simple_info info;
-	struct u_panotools_values vals;
 
 	struct u_sink_debug debug_sinks[4];
 
@@ -190,8 +186,6 @@ psvr2_hmd_destroy(struct xrt_device *xdev)
 	if (hmd->dev != NULL) {
 		libusb_close(hmd->dev);
 	}
-
-	m_imu_3dof_close(&hmd->fusion);
 
 	// Remove the variable tracking.
 	u_var_remove_root(hmd);
@@ -1021,8 +1015,6 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	    (enum u_device_alloc_flags)(U_DEVICE_ALLOC_HMD | U_DEVICE_ALLOC_TRACKING_NONE);
 
 	struct psvr2_hmd *hmd = U_DEVICE_ALLOCATE(struct psvr2_hmd, flags, 1, 0);
-
-	m_imu_3dof_init(&hmd->fusion, M_IMU_3DOF_USE_GRAVITY_DUR_20MS);
 
 	if (os_mutex_init(&hmd->data_lock) != 0) {
 		PSVR2_ERROR(hmd, "Failed to init data mutex!");
