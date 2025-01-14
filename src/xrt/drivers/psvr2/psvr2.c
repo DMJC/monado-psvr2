@@ -173,16 +173,20 @@ static void
 psvr2_usb_stop(struct psvr2_hmd *hmd);
 
 static void
+psvr2_usb_destroy(struct psvr2_hmd *hmd);
+
+static void
 psvr2_hmd_destroy(struct xrt_device *xdev)
 {
 	struct psvr2_hmd *hmd = psvr2_hmd(xdev);
 
-	// Shut down USB communication
-	psvr2_usb_stop(hmd);
-
 	os_thread_helper_lock(&hmd->usb_thread);
 	hmd->usb_complete = 1;
 	os_thread_helper_unlock(&hmd->usb_thread);
+	os_thread_helper_stop_and_wait(&hmd->usb_thread);
+
+	psvr2_usb_destroy(hmd);
+
 	if (hmd->dev != NULL) {
 		libusb_close(hmd->dev);
 	}
@@ -624,6 +628,11 @@ psvr2_usb_thread(void *ptr)
 
 	os_thread_helper_unlock(&hmd->usb_thread);
 
+	// Shut down USB communication
+	psvr2_usb_stop(hmd);
+
+	libusb_handle_events(hmd->ctx);
+
 	return NULL;
 }
 
@@ -938,14 +947,9 @@ psvr2_usb_stop(struct psvr2_hmd *hmd)
 	}
 
 	os_mutex_unlock(&hmd->data_lock);
+}
 
-	os_thread_helper_lock(&hmd->usb_thread);
-	while (hmd->usb_active_xfers > 0) {
-		PSVR2_TRACE(hmd, "Waiting for USB transfers to complete");
-		os_thread_helper_wait_locked(&hmd->usb_thread);
-	}
-	os_thread_helper_unlock(&hmd->usb_thread);
-
+void psvr2_usb_destroy(struct psvr2_hmd *hmd) {
 	// All transfers are stopped and can be freed now
 	if (hmd->status_xfer) {
 		libusb_free_transfer(hmd->status_xfer);
