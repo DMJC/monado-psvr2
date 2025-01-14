@@ -149,8 +149,10 @@ struct psvr2_hmd
 	timepoint_ns last_vts_ns;
 	timepoint_ns last_slam_ns;
 	timepoint_ns system_zero_ns;
+	timepoint_ns last_imu_ns;
 
 	time_duration_ns hw2mono;
+	time_duration_ns hw2mono_imu;
 };
 
 
@@ -295,6 +297,7 @@ process_imu_record(struct psvr2_hmd *hmd, int index, struct imu_usb_record *in, 
 	            imu_data.status);
 
 	uint32_t last_vts_us = hmd->last_vts_us;
+	uint32_t last_imu_ts = hmd->last_imu_ts;
 
 	hmd->last_vts_us = imu_data.vts_us; /* Last VTS timestamp */
 	hmd->last_imu_ts = imu_data.imu_ts_us;
@@ -310,14 +313,18 @@ process_imu_record(struct psvr2_hmd *hmd, int index, struct imu_usb_record *in, 
 	if (hmd->timestamp_initialized) {
 		// @note Overflow expected and fine, since this is an unsigned subtraction
 		uint32_t vts_delta_us = imu_data.vts_us - last_vts_us;
+		uint16_t imu_delta_us = imu_data.imu_ts_us - last_imu_ts;
 
 		hmd->last_vts_ns += (timepoint_ns)vts_delta_us * U_TIME_1US_IN_NS;
+		hmd->last_imu_ns += (timepoint_ns)imu_delta_us * U_TIME_1US_IN_NS;
 
 		const timepoint_ns now_hw = hmd->last_vts_ns;
+		const timepoint_ns now_imu = hmd->last_imu_ns;
 		const timepoint_ns now_mono = received_ns - hmd->system_zero_ns;
 
 		const float IMU_FREQ = 2000.0f;
 		m_clock_offset_a2b(IMU_FREQ, now_hw, now_mono, &hmd->hw2mono);
+		m_clock_offset_a2b(IMU_FREQ, now_imu, now_mono, &hmd->hw2mono_imu);
 
 		struct xrt_imu_sample sample = {
 		    .timestamp_ns = hmd->last_vts_ns,
@@ -521,6 +528,7 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 		hmd->system_zero_ns = os_monotonic_get_ns();
 		hmd->last_vts_ns = 0;
 		hmd->last_slam_ns = 0;
+		hmd->last_imu_ns = 0;
 		hmd->timestamp_initialized = true;
 	} else {
 		// @note Overflow expected and fine, since this is an unsigned subtraction
@@ -949,7 +957,9 @@ psvr2_usb_stop(struct psvr2_hmd *hmd)
 	os_mutex_unlock(&hmd->data_lock);
 }
 
-void psvr2_usb_destroy(struct psvr2_hmd *hmd) {
+void
+psvr2_usb_destroy(struct psvr2_hmd *hmd)
+{
 	// All transfers are stopped and can be freed now
 	if (hmd->status_xfer) {
 		libusb_free_transfer(hmd->status_xfer);
