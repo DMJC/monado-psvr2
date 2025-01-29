@@ -975,6 +975,18 @@ psvr2_usb_destroy(struct psvr2_hmd *hmd)
 		libusb_free_transfer(hmd->slam_xfer);
 		hmd->slam_xfer = NULL;
 	}
+	if (hmd->led_detector_xfer) {
+		libusb_free_transfer(hmd->led_detector_xfer);
+		hmd->slam_xfer = NULL;
+	}
+	if (hmd->relocalizer_xfer) {
+		libusb_free_transfer(hmd->relocalizer_xfer);
+		hmd->slam_xfer = NULL;
+	}
+	if (hmd->vd_xfer) {
+		libusb_free_transfer(hmd->vd_xfer);
+		hmd->slam_xfer = NULL;
+	}
 }
 
 static void
