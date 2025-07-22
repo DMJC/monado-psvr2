@@ -16,6 +16,7 @@
 #include "xrt/xrt_compositor.h"
 #include "xrt/xrt_results.h"
 #include "xrt/xrt_defines.h"
+#include "xrt/xrt_future.h"
 #include "xrt/xrt_system.h"
 #include "xrt/xrt_session.h"
 #include "xrt/xrt_instance.h"

@@ -285,6 +285,55 @@ create_localspace(volatile struct ipc_client_state *ics, uint32_t *out_local_id,
 	return XRT_SUCCESS;
 }
 
+XRT_MAYBE_UNUSED xrt_result_t
+get_new_future_id(volatile struct ipc_client_state *ics, uint32_t *out_id)
+{
+	// Our handle is just the index for now.
+	uint32_t index = 0;
+	for (; index < IPC_MAX_CLIENT_FUTURES; ++index) {
+		if (ics->xfts[index] == NULL) {
+			break;
+		}
+	}
+
+	if (index >= IPC_MAX_CLIENT_FUTURES) {
+		IPC_ERROR(ics->server, "Too many futures!");
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	*out_id = index;
+
+	return XRT_SUCCESS;
+}
+
+static inline xrt_result_t
+validate_future_id(volatile struct ipc_client_state *ics, uint32_t future_id, struct xrt_future **out_xft)
+{
+	if (future_id >= IPC_MAX_CLIENT_FUTURES) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	if (ics->xfts[future_id] == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	*out_xft = (struct xrt_future *)ics->xfts[future_id];
+	return (*out_xft != NULL) ? XRT_SUCCESS : XRT_ERROR_ALLOCATION;
+}
+
+static inline xrt_result_t
+release_future(volatile struct ipc_client_state *ics, uint32_t future_id)
+{
+	struct xrt_future *xft = NULL;
+	xrt_result_t xret = validate_future_id(ics, future_id, &xft);
+	if (xret != XRT_SUCCESS) {
+		return xret;
+	}
+	xrt_future_reference(&xft, NULL);
+	ics->xfts[future_id] = NULL;
+	return XRT_SUCCESS;
+}
+
 /*
  *
  * Handle functions.
@@ -331,6 +380,7 @@ ipc_handle_instance_describe_client(volatile struct ipc_client_state *ics,
 	EXT(ext_hand_tracking_enabled);
 	EXT(ext_hand_tracking_data_source_enabled);
 	EXT(ext_eye_gaze_interaction_enabled);
+	EXT(ext_future_enabled);
 	EXT(ext_hand_interaction_enabled);
 	EXT(htc_facial_tracking_enabled);
 	EXT(fb_body_tracking_enabled);
@@ -428,6 +478,7 @@ ipc_handle_session_begin(volatile struct ipc_client_state *ics)
 	    .ext_hand_tracking_enabled = ics->client_state.info.ext_hand_tracking_enabled,
 	    .ext_hand_tracking_data_source_enabled = ics->client_state.info.ext_hand_tracking_data_source_enabled,
 	    .ext_eye_gaze_interaction_enabled = ics->client_state.info.ext_eye_gaze_interaction_enabled,
+	    .ext_future_enabled = ics->client_state.info.ext_future_enabled,
 	    .ext_hand_interaction_enabled = ics->client_state.info.ext_hand_interaction_enabled,
 	    .htc_facial_tracking_enabled = ics->client_state.info.htc_facial_tracking_enabled,
 	    .fb_body_tracking_enabled = ics->client_state.info.fb_body_tracking_enabled,
@@ -2579,4 +2630,45 @@ ipc_handle_device_set_brightness(volatile struct ipc_client_state *ics, uint32_t
 	}
 
 	return xrt_device_set_brightness(xdev, brightness, relative);
+}
+
+xrt_result_t
+ipc_handle_future_get_state(volatile struct ipc_client_state *ics, uint32_t future_id, enum xrt_future_state *out_state)
+{
+	struct xrt_future *xft = NULL;
+	xrt_result_t xret = validate_future_id(ics, future_id, &xft);
+	if (xret != XRT_SUCCESS) {
+		return xret;
+	}
+	return xrt_future_get_state(xft, out_state);
+}
+
+xrt_result_t
+ipc_handle_future_get_result(volatile struct ipc_client_state *ics,
+                             uint32_t future_id,
+                             struct xrt_future_result *out_ft_result)
+{
+	struct xrt_future *xft = NULL;
+	xrt_result_t xret = validate_future_id(ics, future_id, &xft);
+	if (xret != XRT_SUCCESS) {
+		return xret;
+	}
+	return xrt_future_get_result(xft, out_ft_result);
+}
+
+xrt_result_t
+ipc_handle_future_cancel(volatile struct ipc_client_state *ics, uint32_t future_id)
+{
+	struct xrt_future *xft = NULL;
+	xrt_result_t xret = validate_future_id(ics, future_id, &xft);
+	if (xret != XRT_SUCCESS) {
+		return xret;
+	}
+	return xrt_future_cancel(xft);
+}
+
+xrt_result_t
+ipc_handle_future_destroy(volatile struct ipc_client_state *ics, uint32_t future_id)
+{
+	return release_future(ics, future_id);
 }

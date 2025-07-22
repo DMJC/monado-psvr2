@@ -34,6 +34,8 @@
 #define OXR_XR_DEBUG_XDEVLIST  (*(uint64_t *)"oxrxdli\0")
 // plane detection
 #define OXR_XR_DEBUG_PLANEDET  (*(uint64_t *)"oxrplan\0")
+// futures
+#define OXR_XR_DEBUG_FUTURE  (*(uint64_t *)"oxrfutr\0")
 // clang-format on
 
 /*!

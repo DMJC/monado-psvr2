@@ -58,6 +58,7 @@ extern "C" {
 #define IPC_MAX_CLIENT_SEMAPHORES 8
 #define IPC_MAX_CLIENT_SWAPCHAINS (XRT_MAX_LAYERS * 2)
 #define IPC_MAX_CLIENT_SPACES 128
+#define IPC_MAX_CLIENT_FUTURES 128
 
 struct xrt_instance;
 struct xrt_compositor;
@@ -112,6 +113,9 @@ struct ipc_client_state
 
 	//! Ptrs to the semaphores.
 	struct xrt_compositor_semaphore *xcsems[IPC_MAX_CLIENT_SEMAPHORES];
+
+	//! Ptrs to the futures.
+	struct xrt_future *xfts[IPC_MAX_CLIENT_FUTURES];
 
 	struct
 	{

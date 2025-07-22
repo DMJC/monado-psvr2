@@ -765,6 +765,20 @@ oxr_xrSuggestBodyTrackingCalibrationOverrideMETA(XrBodyTrackerFB bodyTracker,
                                                  const XrBodyTrackingCalibrationInfoMETA *calibrationInfo);
 #endif
 
+/*
+ *
+ * oxr_api_future.c
+ *
+ */
+
+#ifdef OXR_HAVE_EXT_future
+XRAPI_ATTR XrResult XRAPI_CALL
+oxr_xrPollFutureEXT(XrInstance instance, const XrFuturePollInfoEXT *pollInfo, XrFuturePollResultEXT *pollResult);
+
+XRAPI_ATTR XrResult XRAPI_CALL
+oxr_xrCancelFutureEXT(XrInstance instance, const XrFutureCancelInfoEXT *cancelInfo);
+#endif
+
 /*!
  * @}
  */

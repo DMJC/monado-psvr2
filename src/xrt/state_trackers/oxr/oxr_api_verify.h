@@ -92,6 +92,9 @@ struct oxr_subaction_paths;
 	OXR_VERIFY_AND_SET_AND_INIT(log, thing, new_thing, oxr_xdev_list, XDEVLIST, name, new_thing->sess->sys->inst)
 #define OXR_VERIFY_PLANE_DETECTOR_AND_INIT_LOG(log, thing, new_thing, name) \
 	OXR_VERIFY_AND_SET_AND_INIT(log, thing, new_thing, oxr_plane_detector_ext, PLANEDET, name, new_thing->sess->sys->inst)
+#define OXR_VERIFY_FUTURE_AND_INIT_LOG(log, thing, new_thing, name) \
+	OXR_VERIFY_AND_SET_AND_INIT(log, thing, new_thing, oxr_future_ext, FUTURE, name, new_thing->inst); \
+	OXR_VERIFY_FUTURE_VALID(log, new_thing)
 // clang-format on
 
 #define OXR_VERIFY_INSTANCE_NOT_NULL(log, arg, new_arg) OXR_VERIFY_SET(log, arg, new_arg, oxr_instance, INSTANCE);
@@ -103,6 +106,7 @@ struct oxr_subaction_paths;
 #define OXR_VERIFY_ACTIONSET_NOT_NULL(log, arg, new_arg) OXR_VERIFY_SET(log, arg, new_arg, oxr_action_set, ACTIONSET);
 #define OXR_VERIFY_XDEVLIST_NOT_NULL(log, arg, new_arg) OXR_VERIFY_SET(log, arg, new_arg, oxr_xdev_list, XDEVLIST);
 
+#define OXR_VERIFY_FUTURE_NOT_NULL(log, arg, new_arg) OXR_VERIFY_SET(log, arg, new_arg, oxr_future_ext, FUTURE);
 /*!
  * Checks if a required extension is enabled.
  *
@@ -322,6 +326,13 @@ struct oxr_subaction_paths;
 			if (verify_ret != XR_SUCCESS) {                                                                \
 				return verify_ret;                                                                     \
 			}                                                                                              \
+		}                                                                                                      \
+	} while (false)
+
+#define OXR_VERIFY_FUTURE_VALID(LOG, OXR_FT)                                                                           \
+	do {                                                                                                           \
+		if (OXR_FT->xft == NULL) {                                                                             \
+			return oxr_error(LOG, XR_ERROR_FUTURE_INVALID_EXT, "future is not valid");                     \
 		}                                                                                                      \
 	} while (false)
 

@@ -64,6 +64,7 @@ EXTENSIONS = (
     ['XR_EXT_debug_utils', 'XRT_FEATURE_OPENXR_DEBUG_UTILS'],
     ['XR_EXT_dpad_binding'],
     ['XR_EXT_eye_gaze_interaction', 'XRT_FEATURE_OPENXR_INTERACTION_EXT_EYE_GAZE'],
+    ['XR_EXT_future', 'XRT_FEATURE_OPENXR_FUTURE_EXT'],
     ['XR_EXT_hand_interaction', 'XRT_FEATURE_OPENXR_INTERACTION_EXT_HAND'],
     ['XR_EXT_hand_tracking', 'XRT_FEATURE_OPENXR_HAND_TRACKING_EXT'],
     ['XR_EXT_hand_tracking_data_source', 'XRT_FEATURE_OPENXR_HAND_TRACKING_DATA_SOURCE_EXT'],

@@ -389,6 +389,12 @@ ipc_server_client_destroy_session_and_compositor(volatile struct ipc_client_stat
 		IPC_TRACE(ics->server, "Destroyed compositor semaphore %d.", j);
 	}
 
+	for (uint32_t j = 0; j < IPC_MAX_CLIENT_FUTURES; j++) {
+		// Drop our reference, does NULL checking. Cast away volatile.
+		xrt_future_reference((struct xrt_future **)&ics->xfts[j], NULL);
+		IPC_TRACE(ics->server, "Destroyed future %d.", j);
+	}
+
 	os_mutex_unlock(&ics->server->global_state.lock);
 
 	// Cast away volatile.

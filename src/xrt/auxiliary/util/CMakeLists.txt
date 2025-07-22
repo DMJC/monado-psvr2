@@ -41,6 +41,8 @@ add_library(
 	u_format.h
 	u_frame.c
 	u_frame.h
+	u_future.h
+	u_future.cpp
 	u_generic_callbacks.hpp
 	u_git_tag.h
 	u_hand_tracking.c

@@ -274,6 +274,9 @@ oxr_session_begin(struct oxr_logger *log, struct oxr_session *sess, const XrSess
 #ifdef OXR_HAVE_EXT_eye_gaze_interaction
 		    .ext_eye_gaze_interaction_enabled = extensions->EXT_eye_gaze_interaction,
 #endif
+#ifdef OXR_HAVE_EXT_future
+		    .ext_future_enabled = extensions->EXT_future,
+#endif
 #ifdef OXR_HAVE_EXT_hand_interaction
 		    .ext_hand_interaction_enabled = extensions->EXT_hand_interaction,
 #endif

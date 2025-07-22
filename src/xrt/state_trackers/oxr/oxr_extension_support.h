@@ -351,6 +351,17 @@
 
 
 /*
+ * XR_EXT_future
+ */
+#if defined(XR_EXT_future) && defined(XRT_FEATURE_OPENXR_FUTURE_EXT)
+#define OXR_HAVE_EXT_future
+#define OXR_EXTENSION_SUPPORT_EXT_future(_) _(EXT_future, EXT_FUTURE)
+#else
+#define OXR_EXTENSION_SUPPORT_EXT_future(_)
+#endif
+
+
+/*
  * XR_EXT_hand_interaction
  */
 #if defined(XR_EXT_hand_interaction) && defined(XRT_FEATURE_OPENXR_INTERACTION_EXT_HAND)
@@ -903,6 +914,7 @@
     OXR_EXTENSION_SUPPORT_EXT_debug_utils(_) \
     OXR_EXTENSION_SUPPORT_EXT_dpad_binding(_) \
     OXR_EXTENSION_SUPPORT_EXT_eye_gaze_interaction(_) \
+    OXR_EXTENSION_SUPPORT_EXT_future(_) \
     OXR_EXTENSION_SUPPORT_EXT_hand_interaction(_) \
     OXR_EXTENSION_SUPPORT_EXT_hand_tracking(_) \
     OXR_EXTENSION_SUPPORT_EXT_hand_tracking_data_source(_) \

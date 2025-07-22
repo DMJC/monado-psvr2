@@ -130,3 +130,6 @@ ipc_client_system_devices_create(struct ipc_connection *ipc_c);
 
 struct xrt_session *
 ipc_client_session_create(struct ipc_connection *ipc_c);
+
+struct xrt_future *
+ipc_client_future_create(struct ipc_connection *ipc_c, uint32_t future_id);

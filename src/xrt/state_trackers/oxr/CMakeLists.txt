@@ -114,6 +114,10 @@ if(XRT_FEATURE_OPENXR_FACE_TRACKING2_FB)
 	target_sources(st_oxr PRIVATE oxr_api_face_tracking2_fb.c oxr_face_tracking2_fb.c)
 endif()
 
+if(XRT_FEATURE_OPENXR_FUTURE_EXT)
+	target_sources(st_oxr PRIVATE oxr_api_future.c oxr_future.c)
+endif()
+
 target_link_libraries(
 	st_oxr
 	PRIVATE

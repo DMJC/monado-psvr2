@@ -14,6 +14,7 @@
 #include "xrt/xrt_space.h"
 #include "xrt/xrt_limits.h"
 #include "xrt/xrt_system.h"
+#include "xrt/xrt_future.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_tracking.h"
 #include "xrt/xrt_compositor.h"
@@ -2959,6 +2960,64 @@ struct oxr_plane_detector_ext
 	uint64_t detection_id;
 };
 #endif // OXR_HAVE_EXT_plane_detection
+
+#ifdef OXR_HAVE_EXT_future
+/*!
+ * EXT futures.
+ *
+ * Parent type/handle is @ref oxr_instance
+ *
+ * @obj{XrFutureEXT}
+ * @extends oxr_handle_base
+ */
+struct oxr_future_ext
+{
+	//! Common structure for things referred to by OpenXR handles.
+	struct oxr_handle_base handle;
+
+	//! (weak) reference to instance (may or not be a direct parent handle")
+	struct oxr_instance *inst;
+
+	//! Owning session.
+	struct oxr_session *sess;
+
+	//! xrt_future backing this future
+	struct xrt_future *xft;
+};
+
+/*!
+ * To go back to a OpenXR object.
+ *
+ * @relates oxr_future_ext
+ */
+static inline XrFutureEXT
+oxr_future_ext_to_openxr(struct oxr_future_ext *future_ext)
+{
+	return XRT_CAST_PTR_TO_OXR_HANDLE(XrFutureEXT, future_ext);
+}
+
+XrResult
+oxr_future_create(struct oxr_logger *log,
+                  struct oxr_session *sess,
+                  struct xrt_future *xft,
+                  struct oxr_handle_base *parent_handle,
+                  struct oxr_future_ext **out_oxr_future_ext);
+
+XrResult
+oxr_future_invalidate(struct oxr_logger *log, struct oxr_future_ext *oxr_future);
+
+XrResult
+oxr_future_ext_poll(struct oxr_logger *log, const struct oxr_future_ext *oxr_future, XrFuturePollResultEXT *pollResult);
+
+XrResult
+oxr_future_ext_cancel(struct oxr_logger *log, struct oxr_future_ext *oxr_future);
+
+XrResult
+oxr_future_ext_complete(struct oxr_logger *log,
+                        struct oxr_future_ext *oxr_future,
+                        struct xrt_future_result *out_ft_result);
+
+#endif
 
 #ifdef OXR_HAVE_EXT_user_presence
 XrResult

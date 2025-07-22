@@ -310,6 +310,9 @@ oxr_instance_create(struct oxr_logger *log,
 #ifdef OXR_HAVE_EXT_eye_gaze_interaction
 	    .ext_eye_gaze_interaction_enabled = extensions->EXT_eye_gaze_interaction,
 #endif
+#ifdef OXR_HAVE_EXT_future
+	    .ext_future_enabled = extensions->EXT_future,
+#endif
 #ifdef OXR_HAVE_EXT_hand_interaction
 	    .ext_hand_interaction_enabled = extensions->EXT_hand_interaction,
 #endif
