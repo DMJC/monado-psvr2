@@ -9,7 +9,8 @@
  * @ingroup oxr_main
  */
 
-#include "bindings/b_generated_bindings.h"
+#include "b_generated_bindings_helpers.h"
+#include "oxr_bindings/b_oxr_generated_bindings.h"
 #include "util/u_debug.h"
 #include "util/u_time.h"
 #include "util/u_misc.h"

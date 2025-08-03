@@ -22,7 +22,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include "bindings/b_generated_bindings.h"
+#include "bindings/b_generated_bindings_helpers.h"
 #include <assert.h>
 
 DEBUG_GET_ONCE_OPTION(active_config, "P_OVERRIDE_ACTIVE_CONFIG", NULL)

@@ -11,7 +11,7 @@
 #include "util/u_misc.h"
 
 #include "xrt/xrt_compiler.h"
-#include "bindings/b_generated_bindings.h"
+#include "oxr_bindings/b_oxr_generated_bindings.h"
 
 #include "oxr_objects.h"
 #include "oxr_logger.h"

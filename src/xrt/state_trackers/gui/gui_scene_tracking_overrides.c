@@ -23,7 +23,7 @@
 #include "gui_common.h"
 #include "gui_imgui.h"
 
-#include "bindings/b_generated_bindings.h"
+#include "bindings/b_generated_bindings_helpers.h"
 
 struct gui_tracking_overrides
 {

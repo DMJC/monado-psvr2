@@ -9,7 +9,7 @@
  * @ingroup oxr_main
  */
 
-#include "bindings/b_generated_bindings.h"
+#include "oxr_bindings/b_oxr_generated_bindings.h"
 #include "xrt/xrt_config_os.h"
 #include "xrt/xrt_config_build.h"
 #include "xrt/xrt_instance.h"
@@ -289,11 +289,8 @@ oxr_instance_create(struct oxr_logger *log,
 
 #undef CACHE_SUBACTION_PATHS
 
-	const struct oxr_bindings_path_cache *path_cache;
-	oxr_get_interaction_profile_path_cache(&path_cache);
-
-	for (uint32_t i = 0; i < ARRAY_SIZE(path_cache->path_cache); i++) {
-		cache_path(log, inst, *path_cache->path_cache[i].path_cache_name, path_cache->path_cache[i].path_cache);
+	for (uint32_t i = 0; i < OXR_BINDINGS_PROFILE_TEMPLATE_COUNT; i++) {
+		cache_path(log, inst, profile_templates[i].path, &profile_templates[i].path_cache);
 	}
 
 	// fill in our application info - @todo - replicate all createInfo

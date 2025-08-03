@@ -1,0 +1,44 @@
+// Copyright 2020-2022, Collabora, Ltd.
+// SPDX-License-Identifier: BSL-1.0
+/*!
+ * @file
+ * @brief  Generated bindings data.
+ * @author Jakob Bornecrantz <jakob@collabora.com>
+ * @author Christoph Haag <christoph.haag@collabora.com>
+ * @author Korcan Hussein <korcan.hussein@collabora.com>
+ * @ingroup xrt_main
+ */
+
+#include "b_generated_bindings_helpers.h"
+#include <string.h>
+
+// clang-format off
+
+const char *
+xrt_input_name_string(enum xrt_input_name input) {
+    switch(input)
+    {
+$xrt_input_name_string_switch
+    }
+}
+
+enum xrt_input_name
+xrt_input_name_enum(const char *input)
+{
+$xrt_input_name_enum_content
+}
+
+const char *
+xrt_output_name_string(enum xrt_output_name output)
+{
+    switch(output)
+    {
+$xrt_output_name_string_switch
+    }
+}
+
+enum xrt_output_name
+xrt_output_name_enum(const char *output)
+{
+$xrt_output_name_enum_content
+}

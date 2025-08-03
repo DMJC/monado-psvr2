@@ -122,7 +122,7 @@ target_link_libraries(
 		xrt-external-nanopb
 		xrt-external-bcdec
 		aux-includes
-		aux_generated_bindings
+		aux_generated_bindings_helpers
 		aux_os
 		aux_math
 	)

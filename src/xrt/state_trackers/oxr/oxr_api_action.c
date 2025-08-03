@@ -23,7 +23,7 @@
 
 #include <stdio.h>
 
-#include "bindings/b_generated_bindings.h"
+#include "oxr_bindings/b_oxr_generated_bindings.h"
 
 
 /*

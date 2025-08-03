@@ -38,7 +38,7 @@ extern "C" {
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_instance.h"
 
-#include "bindings/b_generated_bindings.h"
+#include "b_ovrd_generated_bindings.h"
 }
 #include "math/m_vec3.h"
 

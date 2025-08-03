@@ -5,15 +5,7 @@
 # Main code
 #
 
-add_library(oxr-interfaces INTERFACE)
-target_include_directories(
-	oxr-interfaces INTERFACE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
-	)
-
-# aux_os, because oxr_objects.h includes os_threading.h
-target_link_libraries(
-	oxr-interfaces INTERFACE xrt-external-openxr aux_os Vulkan::Vulkan xrt-external-renderdoc
-	)
+add_subdirectory(oxr_bindings)
 
 add_library(
 	st_oxr STATIC
@@ -53,7 +45,13 @@ add_library(
 	oxr_two_call.h
 	oxr_verify.c
 	oxr_xdev.c
+	${CMAKE_CURRENT_BINARY_DIR}/oxr_bindings/b_oxr_generated_bindings.c
+	${CMAKE_CURRENT_BINARY_DIR}/oxr_bindings/b_oxr_generated_bindings.h
 	)
+
+add_dependencies(st_oxr generate_oxr_bindings)
+# To enable finding oxr_objects.h in b_oxr_generated_bindings
+target_include_directories(st_oxr PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(XRT_HAVE_VULKAN)
 	target_sources(st_oxr PRIVATE oxr_session_gfx_vk.c oxr_swapchain_vk.c oxr_vulkan.c)
@@ -123,7 +121,7 @@ target_link_libraries(
 		xrt-external-openxr
 		aux_util
 		aux_math
-		aux_generated_bindings
+		aux_generated_bindings_helpers
 		comp_client
 		aux-includes
 	PUBLIC aux_os
