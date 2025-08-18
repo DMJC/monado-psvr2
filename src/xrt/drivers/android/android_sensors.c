@@ -1,12 +1,14 @@
 // Copyright 2013, Fredrik Hultin.
 // Copyright 2013, Jakob Bornecrantz.
 // Copyright 2015, Joey Ferwerda.
-// Copyright 2020-2023, Collabora, Ltd.
+// Copyright 2020-2025, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
  * @brief  Android sensors driver code.
  * @author Lubosz Sarnecki <lubosz.sarnecki@collabora.com>
+ * @author Korcan Hussein <korcan.hussein@collabora.com>
+ * @author Simon Zeni <simon.zeni@collabora.com>
  * @ingroup drv_android
  */
 
@@ -18,7 +20,11 @@
 #include "util/u_var.h"
 #include "util/u_visibility_mask.h"
 
+#include "cardboard_device.pb.h"
+#include "pb_decode.h"
+
 #include "android/android_globals.h"
+#include "android/android_content.h"
 #include "android/android_custom_surface.h"
 
 #include <xrt/xrt_config_android.h>
@@ -38,6 +44,108 @@ static inline struct android_device *
 android_device(struct xrt_device *xdev)
 {
 	return (struct android_device *)xdev;
+}
+
+static bool
+read_file(pb_istream_t *stream, uint8_t *buf, size_t count)
+{
+	U_LOG_E("read_file callback");
+	FILE *file = (FILE *)stream->state;
+	if (buf == NULL) {
+		while (count-- && fgetc(file) != EOF)
+			;
+		return count == 0;
+	}
+
+	bool status = (fread(buf, 1, count, file) == count);
+
+	if (feof(file)) {
+		stream->bytes_left = 0;
+	}
+
+	return status;
+}
+
+static bool
+read_buffer(pb_istream_t *stream, const pb_field_t *field, void **arg)
+{
+	U_LOG_E("read_file callback");
+	uint8_t *buffer = (uint8_t *)*arg;
+	return pb_read(stream, buffer, stream->bytes_left);
+}
+
+static bool
+load_cardboard_distortion(struct android_device *d,
+                          struct xrt_android_display_metrics *metrics,
+                          struct u_cardboard_distortion_arguments *args)
+{
+	char external_storage_dir[PATH_MAX] = {0};
+	if (!android_content_get_files_dir(android_globals_get_context(), external_storage_dir,
+	                                   sizeof(external_storage_dir))) {
+		ANDROID_ERROR(d, "failed to access files dir");
+		return false;
+	}
+
+	/* TODO: put file in Cardboard folder */
+	char device_params_file[PATH_MAX] = {0};
+	snprintf(device_params_file, sizeof(device_params_file), "%s/current_device_params", external_storage_dir);
+
+	FILE *file = fopen(device_params_file, "rb");
+	if (file == NULL) {
+		ANDROID_ERROR(d, "failed to open calibration file '%s'", device_params_file);
+		return false;
+	}
+
+	pb_istream_t stream = {&read_file, file, SIZE_MAX, NULL};
+	cardboard_DeviceParams params = cardboard_DeviceParams_init_zero;
+
+	char vendor[64] = {0};
+	params.vendor.arg = vendor;
+	params.vendor.funcs.decode = read_buffer;
+
+	char model[64] = {0};
+	params.model.arg = model;
+	params.model.funcs.decode = read_buffer;
+
+	float angles[4] = {0};
+	params.left_eye_field_of_view_angles.arg = angles;
+	params.left_eye_field_of_view_angles.funcs.decode = read_buffer;
+
+	params.distortion_coefficients.arg = args->distortion_k;
+	params.distortion_coefficients.funcs.decode = read_buffer;
+
+	if (!pb_decode(&stream, cardboard_DeviceParams_fields, &params)) {
+		ANDROID_ERROR(d, "failed to read calibration file: %s", PB_GET_ERROR(&stream));
+		return false;
+	}
+
+	if (params.has_vertical_alignment) {
+		if (params.vertical_alignment != cardboard_DeviceParams_VerticalAlignmentType_BOTTOM) {
+			ANDROID_ERROR(d, "Only vertical alignment bottom supported");
+			return false;
+		}
+	}
+
+	if (params.has_inter_lens_distance) {
+		args->inter_lens_distance_meters = params.inter_lens_distance;
+	}
+	if (params.has_screen_to_lens_distance) {
+		args->screen_to_lens_distance_meters = params.screen_to_lens_distance;
+	}
+	if (params.has_tray_to_lens_distance) {
+		args->tray_to_lens_distance_meters = params.tray_to_lens_distance;
+	}
+
+#define DEG_TO_RAD(x) (float)(x * M_PI / 180.0)
+	args->fov = (struct xrt_fov){.angle_left = -DEG_TO_RAD(angles[0]),
+	                             .angle_right = DEG_TO_RAD(angles[1]),
+	                             .angle_down = -DEG_TO_RAD(angles[2]),
+	                             .angle_up = DEG_TO_RAD(angles[3])};
+#undef DEG_TO_RAD
+
+	ANDROID_INFO(d, "loaded calibration for device %s (%s)", model, vendor);
+
+	return true;
 }
 
 // Callback for the Android sensor event queue
@@ -251,6 +359,7 @@ android_device_create(void)
 	d->base.name = XRT_DEVICE_GENERIC_HMD;
 	d->base.destroy = android_device_destroy;
 	d->base.update_inputs = u_device_noop_update_inputs;
+	d->base.set_output = u_device_ni_set_output;
 	d->base.get_tracked_pose = android_device_get_tracked_pose;
 	d->base.get_view_poses = u_device_get_view_poses;
 	d->base.get_visibility_mask = u_device_get_visibility_mask;
@@ -284,15 +393,6 @@ android_device_create(void)
 
 	d->base.hmd->screens[0].nominal_frame_interval_ns = time_s_to_ns(1.0f / metrics.refresh_rate);
 
-	// Everything done, finally start the thread.
-	os_thread_helper_init(&d->oth);
-	ret = os_thread_helper_start(&d->oth, android_run_thread, d);
-	if (ret != 0) {
-		ANDROID_ERROR(d, "Failed to start thread!");
-		android_device_destroy(&d->base);
-		return NULL;
-	}
-
 	const uint32_t w_pixels = metrics.width_pixels;
 	const uint32_t h_pixels = metrics.height_pixels;
 
@@ -300,7 +400,7 @@ android_device_create(void)
 	const float w_meters = ((float)w_pixels / (float)metrics.xdpi) * 0.0254f;
 	const float h_meters = ((float)h_pixels / (float)metrics.ydpi) * 0.0254f;
 
-	struct u_cardboard_distortion_arguments args = {
+	const struct u_cardboard_distortion_arguments cardboard_v1_distortion_args = {
 	    .distortion_k = {0.441f, 0.156f, 0.f, 0.f, 0.f},
 	    .screen =
 	        {
@@ -320,19 +420,34 @@ android_device_create(void)
 	            .angle_down = -angle,
 	        },
 	};
+	struct u_cardboard_distortion_arguments args = cardboard_v1_distortion_args;
+	if (!load_cardboard_distortion(d, &metrics, &args)) {
+		ANDROID_WARN(
+		    d, "Failed to load cardboard calibration file, falling back to Cardboard V1 distortion values");
+		args = cardboard_v1_distortion_args;
+	}
 
 	u_distortion_cardboard_calculate(&args, d->base.hmd, &d->cardboard);
 
+	// Distortion information.
+	u_distortion_mesh_fill_in_compute(&d->base);
+
+	// Everything done, finally start the thread.
+	os_thread_helper_init(&d->oth);
+	ret = os_thread_helper_start(&d->oth, android_run_thread, d);
+	if (ret != 0) {
+		ANDROID_ERROR(d, "Failed to start thread!");
+		android_device_destroy(&d->base);
+		return NULL;
+	}
 
 	u_var_add_root(d, "Android phone", true);
+	u_var_add_log_level(d, &d->log_level, "log_level");
 	u_var_add_ro_vec3_f32(d, &d->fusion.last.accel, "last.accel");
 	u_var_add_ro_vec3_f32(d, &d->fusion.last.gyro, "last.gyro");
 
 	d->base.supported.orientation_tracking = true;
 	d->base.supported.position_tracking = false;
-
-	// Distortion information.
-	u_distortion_mesh_fill_in_compute(&d->base);
 
 	ANDROID_DEBUG(d, "Created device!");
 

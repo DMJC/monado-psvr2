@@ -1,4 +1,4 @@
-# Copyright 2019-2021, Collabora, Ltd.
+# Copyright 2019-2025, Collabora, Ltd.
 #
 # SPDX-License-Identifier: BSL-1.0
 
@@ -395,6 +395,7 @@ if(XRT_BUILD_DRIVER_ANDROID)
 			aux_android
 			${ANDROID_LIBRARY}
 		)
+	target_link_libraries(drv_android PRIVATE xrt-external-cardboard)
 	list(APPEND ENABLED_DRIVERS android)
 endif()
 
