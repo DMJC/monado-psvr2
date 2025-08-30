@@ -140,7 +140,7 @@ steamvr_open_system(struct xrt_builder *xb,
 	assert(out_xsysd != NULL);
 	assert(*out_xsysd == NULL);
 
-	enum xrt_result result = steamvr_lh_create_devices(out_xsysd);
+	enum xrt_result result = steamvr_lh_create_devices(xp, out_xsysd);
 
 	if (result != XRT_SUCCESS) {
 		SVR_ERROR("Unable to create devices");

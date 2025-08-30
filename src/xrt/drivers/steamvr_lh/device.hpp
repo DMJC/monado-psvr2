@@ -7,6 +7,18 @@
  * @ingroup drv_steamvr_lh
  */
 
+#include "interfaces/context.hpp"
+
+#include "math/m_relation_history.h"
+
+#include "xrt/xrt_device.h"
+
+#include "vive/vive_common.h"
+
+#include "vp2/vp2_hid.h"
+
+#include "openvr_driver.h"
+
 #include <string>
 #include <vector>
 #include <memory>
@@ -14,12 +26,6 @@
 
 #include <condition_variable>
 #include <mutex>
-
-#include "interfaces/context.hpp"
-#include "math/m_relation_history.h"
-#include "xrt/xrt_device.h"
-#include "openvr_driver.h"
-#include "vive/vive_common.h"
 
 class Context;
 struct InputClass;
@@ -122,9 +128,23 @@ private:
 	init_chaperone(const std::string &steam_install);
 };
 
+struct VivePro2Data
+{
+	vp2_hid *hid{nullptr};
+
+	~VivePro2Data()
+	{
+		if (hid != nullptr) {
+			vp2_hid_destroy(hid);
+			hid = nullptr;
+		}
+	}
+};
+
 class HmdDevice : public Device
 {
 public:
+	VIVE_VARIANT variant{VIVE_UNKNOWN};
 	xrt_pose eye[2];
 	float ipd{0.063}; // meters
 	struct Parts
@@ -137,6 +157,10 @@ public:
 	{
 		float min{0.1f};
 		float max{1.0f};
+	};
+
+	struct VivePro2Data vp2
+	{
 	};
 
 	HmdDevice(const DeviceBuilder &builder);
@@ -174,6 +198,9 @@ public:
 	xrt_result_t
 	set_brightness(float brightness, bool relative);
 
+	bool
+	init_vive_pro_2(struct xrt_prober *xp);
+
 private:
 	std::unique_ptr<Parts> hmd_parts{nullptr};
 
@@ -187,7 +214,6 @@ private:
 	std::mutex hmd_parts_mut;
 	float brightness{1.0f};
 	AnalogGainRange analog_gain_range{};
-	VIVE_VARIANT variant{VIVE_UNKNOWN};
 };
 
 class ControllerDevice : public Device

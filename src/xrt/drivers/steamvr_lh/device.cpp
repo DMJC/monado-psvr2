@@ -4,8 +4,32 @@
  * @file
  * @brief SteamVR driver device implementation.
  * @author Shawn Wallace <yungwallace@live.com>
+ * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
  * @ingroup drv_steamvr_lh
  */
+
+#include "math/m_api.h"
+#include "math/m_relation_history.h"
+#include "math/m_space.h"
+
+#include "interfaces/context.hpp"
+
+#include "util/u_debug.h"
+#include "util/u_device.h"
+#include "util/u_hand_simulation.h"
+#include "util/u_hand_tracking.h"
+#include "util/u_logging.h"
+#include "util/u_json.hpp"
+
+#include "xrt/xrt_defines.h"
+#include "xrt/xrt_device.h"
+#include "xrt/xrt_prober.h"
+
+#include "vive/vive_poses.h"
+
+#include "openvr_driver.h"
+
+#include "device.hpp"
 
 #include <cmath>
 #include <functional>
@@ -14,22 +38,6 @@
 #include <algorithm>
 #include <map>
 
-#include "math/m_api.h"
-#include "math/m_relation_history.h"
-#include "math/m_space.h"
-#include "device.hpp"
-#include "interfaces/context.hpp"
-#include "util/u_debug.h"
-#include "util/u_device.h"
-#include "util/u_hand_simulation.h"
-#include "util/u_hand_tracking.h"
-#include "util/u_logging.h"
-#include "util/u_json.hpp"
-#include "xrt/xrt_defines.h"
-#include "xrt/xrt_device.h"
-
-#include "vive/vive_poses.h"
-#include "openvr_driver.h"
 
 #define DEV_ERR(...) U_LOG_IFL_E(ctx->log_level, __VA_ARGS__)
 #define DEV_WARN(...) U_LOG_IFL_W(ctx->log_level, __VA_ARGS__)
@@ -947,12 +955,70 @@ Device::handle_property_write(const vr::PropertyWrite_t &prop)
 	return handle_generic_property_write(prop);
 }
 
+bool
+HmdDevice::init_vive_pro_2(struct xrt_prober *xp)
+{
+	xrt_result_t xret;
+	int ret = 0;
+
+	struct xrt_prober_device **devices = nullptr;
+	size_t device_count;
+
+	xret = xrt_prober_lock_list(xp, &devices, &device_count);
+	if (xret != XRT_SUCCESS) {
+		DEV_ERR("Failed to lock prober device list");
+		return false;
+	}
+
+	for (size_t i = 0; i < device_count; i++) {
+		struct xrt_prober_device *dev = devices[i];
+
+		if (dev->vendor_id == VP2_VID && dev->product_id == VP2_PID) {
+			DEV_INFO("Found Vive Pro 2 HID device");
+			struct os_hid_device *hid_dev = nullptr;
+			ret = xrt_prober_open_hid_interface(xp, dev, 0, &hid_dev);
+			if (ret != 0) {
+				DEV_ERR("Failed to open Vive Pro 2 HID interface");
+				break;
+			}
+
+			ret = vp2_hid_open(hid_dev, &this->vp2.hid);
+			if (ret != 0) {
+				DEV_ERR("Failed to open Vive Pro 2 HID device");
+				break;
+			}
+
+			break;
+		}
+	}
+
+	xrt_prober_unlock_list(xp, &devices);
+
+	int width, height;
+	vp2_resolution_get_extents(vp2_get_resolution(this->vp2.hid), &width, &height);
+
+	for (int i = 0; i < 2; i++) {
+		this->hmd_parts->base.views[i].display.w_pixels = width / 2;
+		this->hmd_parts->base.views[i].display.h_pixels = height;
+
+		this->hmd_parts->base.views[i].viewport.w_pixels = width / 2;
+		this->hmd_parts->base.views[i].viewport.h_pixels = height;
+	}
+
+	this->hmd_parts->base.views[1].viewport.x_pixels = width / 2;
+
+	this->hmd_parts->base.screens[0].w_pixels = width;
+	this->hmd_parts->base.screens[0].h_pixels = height;
+
+	return ret == 0;
+}
+
 vr::ETrackedPropertyError
 HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 {
 	switch (prop.prop) {
 	case vr::Prop_ModelNumber_String: {
-		auto model_number = std::string(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
+		std::string model_number(static_cast<char *>(prop.pvBuffer), prop.unBufferSize);
 
 		this->variant = vive_determine_variant(model_number.c_str());
 

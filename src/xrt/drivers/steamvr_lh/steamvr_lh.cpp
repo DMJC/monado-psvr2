@@ -237,6 +237,7 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 
 	hmd_parts->display = display;
 	hmd->set_hmd_parts(std::move(hmd_parts));
+
 	return true;
 }
 
@@ -770,7 +771,7 @@ destroy(struct xrt_system_devices *xsysd)
 }
 
 extern "C" enum xrt_result
-steamvr_lh_create_devices(struct xrt_system_devices **out_xsysd)
+steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out_xsysd)
 {
 	u_logging_level level = debug_get_log_option_lh_log();
 	// The driver likes to create a bunch of transient folders -
@@ -861,6 +862,10 @@ steamvr_lh_create_devices(struct xrt_system_devices **out_xsysd)
 
 	// Include the HMD
 	if (svrs->ctx->hmd) {
+		if (svrs->ctx->hmd->variant == VIVE_VARIANT_PRO2 && !svrs->ctx->hmd->init_vive_pro_2(xp)) {
+			U_LOG_IFL_W(level, "Found Vive Pro 2, but failed to initialize.");
+		}
+
 		// Always have a head at index 0 and iterate dev count.
 		xsysd->xdevs[xsysd->xdev_count] = svrs->ctx->hmd;
 		xsysd->static_roles.head = xsysd->xdevs[xsysd->xdev_count++];
