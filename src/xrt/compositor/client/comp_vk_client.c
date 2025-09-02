@@ -392,14 +392,6 @@ client_vk_compositor_destroy(struct xrt_compositor *xc)
 	}
 	xrt_compositor_semaphore_reference(&c->sync.xcsem, NULL);
 
-	/*
-	 * Make sure that any of the command buffers from the command pool are
-	 * not in use (pending in Vulkan terms), to please the validation layer.
-	 */
-	os_mutex_lock(&vk->queue_mutex);
-	vk->vkQueueWaitIdle(vk->main_queue.queue);
-	os_mutex_unlock(&vk->queue_mutex);
-
 	// Now safe to free the pool.
 	vk_cmd_pool_destroy(vk, &c->pool);
 
