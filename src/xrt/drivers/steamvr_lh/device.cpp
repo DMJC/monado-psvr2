@@ -759,19 +759,36 @@ void
 Device::update_pose(const vr::DriverPose_t &newPose) const
 {
 	xrt_space_relation relation = {};
-	// These relation hookups are a bit seat of the pants however they produce good full body track results
-	// especially when occluded from basestations linear drift off into space is minimized.
-	if (newPose.deviceIsConnected) {
-		relation.relation_flags |= xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
-		                           xrt_space_relation_flags::XRT_SPACE_RELATION_POSITION_TRACKED_BIT;
-	}
+
 	if (newPose.poseIsValid) {
-		relation.relation_flags |= xrt_space_relation_flags::XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT |
-		                           xrt_space_relation_flags::XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
-	}
-	if (newPose.result == vr::TrackingResult_Running_OK) {
-		relation.relation_flags |= xrt_space_relation_flags::XRT_SPACE_RELATION_POSITION_VALID_BIT |
-		                           xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_VALID_BIT;
+		// The pose is known to be valid but that alone is not enough to say whether the data comes from
+		// inference or if it represents actively tracked position and orientation data. Furthermore we avoid
+		// assumptions regarding the validity of time-derivatives until we know that they're based on tracked
+		// data. This is a conservative strategy that should reduce concerns regarding drift. see
+		// https://registry.khronos.org/OpenXR/specs/1.1/man/html/XrSpaceLocationFlagBits.html
+		relation.relation_flags |= xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
+		                           xrt_space_relation_flags::XRT_SPACE_RELATION_POSITION_VALID_BIT;
+
+		switch (newPose.result) {
+		// see https://github.com/ValveSoftware/openvr/blob/master/docs/Driver_API_Documentation.md
+		case vr::TrackingResult_Running_OK:
+			// If the tracker is running ok then we have actively tracked 6DoF data
+			relation.relation_flags |=
+			    xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+			    xrt_space_relation_flags::XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
+			    xrt_space_relation_flags::XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT |
+			    xrt_space_relation_flags::XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT;
+			break;
+		case vr::TrackingResult_Fallback_RotationOnly:
+		case vr::TrackingResult_Running_OutOfRange:
+			// If the tracking is degraded we should still be able to assume that we still have tracked 3DoF
+			// data
+			relation.relation_flags |=
+			    xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+			    xrt_space_relation_flags::XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
+			break;
+		default: break;
+		}
 	}
 
 	// The driver still outputs good pose data regardless of the pose results above
