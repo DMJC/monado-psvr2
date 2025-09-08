@@ -27,6 +27,9 @@ buildscript {
 
         // ktfmt version
         ktfmtVersion = "0.53"
+
+        // Google Cardboard QR Code scan
+        barcodeScannerViewVersion = "1.6.4"
     }
     repositories {
         google()
