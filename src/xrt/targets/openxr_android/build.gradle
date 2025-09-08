@@ -298,6 +298,7 @@ aboutLibraries {
 }
 
 dependencies {
+    implementation project(':src:xrt:auxiliary:cardboard')
     outOfProcessImplementation project(':src:xrt:ipc')
     implementation project(':src:xrt:auxiliary')
     implementation project(':src:xrt:targets:android_common')
