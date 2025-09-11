@@ -157,6 +157,8 @@ struct ipc_client_state
 	struct xrt_device **plane_detection_xdev;
 
 	int server_thread_index;
+
+	xrt_shmem_handle_t ism_handle;
 };
 
 enum ipc_thread_state
@@ -363,8 +365,7 @@ struct ipc_server
 	struct ipc_device idevs[XRT_SYSTEM_MAX_DEVICES];
 	struct xrt_tracking_origin *xtracks[XRT_SYSTEM_MAX_DEVICES];
 
-	struct ipc_shared_memory *ism;
-	xrt_shmem_handle_t ism_handle;
+	struct ipc_shared_memory *isms[IPC_MAX_CLIENTS];
 
 	struct ipc_server_mainloop ml;
 
@@ -530,6 +531,23 @@ get_idev(volatile struct ipc_client_state *ics, uint32_t device_id)
 	return &ics->server->idevs[device_id];
 }
 
+/*!
+ * Get the data in the shared memory of the given client.
+ */
+static inline struct ipc_shared_memory *
+get_ism(volatile struct ipc_client_state *ics)
+{
+	return ics->server->isms[ics->server_thread_index];
+}
+
+/*!
+ * Get the handle for the shared memory of the given client.
+ */
+static inline xrt_shmem_handle_t
+get_ism_handle(volatile struct ipc_client_state *ics)
+{
+	return ics->ism_handle;
+}
 
 #ifdef __cplusplus
 }

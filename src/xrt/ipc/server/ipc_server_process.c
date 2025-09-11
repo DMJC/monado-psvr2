@@ -30,6 +30,7 @@
 
 #include "util/u_git_tag.h"
 
+#include "shared/ipc_protocol.h"
 #include "shared/ipc_shmem.h"
 #include "server/ipc_server.h"
 #include "server/ipc_server_interface.h"
@@ -209,8 +210,6 @@ teardown_all(struct ipc_server *s)
 
 	u_process_destroy(s->process);
 
-	ipc_shmem_destroy(&s->ism_handle, (void **)&s->ism, sizeof(struct ipc_shared_memory));
-
 	// Destroyed last.
 	os_mutex_destroy(&s->global_state.lock);
 }
@@ -281,16 +280,16 @@ handle_binding(struct ipc_shared_memory *ism,
 }
 
 XRT_CHECK_RESULT static xrt_result_t
-init_shm(struct ipc_server *s)
+init_shm(struct ipc_server *s, volatile struct ipc_client_state *cs)
 {
 	const size_t size = sizeof(struct ipc_shared_memory);
 	xrt_shmem_handle_t handle;
 
-	xrt_result_t xret = ipc_shmem_create(size, &handle, (void **)&s->ism);
+	xrt_result_t xret = ipc_shmem_create(size, &handle, (void **)&s->isms[cs->server_thread_index]);
 	IPC_CHK_AND_RET(s, xret, "ipc_shmem_create");
 
 	// we have a filehandle, we will pass this to our client
-	s->ism_handle = handle;
+	cs->ism_handle = handle;
 
 
 	/*
@@ -300,7 +299,7 @@ init_shm(struct ipc_server *s)
 	 */
 
 	uint32_t count = 0;
-	struct ipc_shared_memory *ism = s->ism;
+	struct ipc_shared_memory *ism = s->isms[cs->server_thread_index];
 
 	ism->startup_timestamp = os_monotonic_get_ns();
 
@@ -418,7 +417,7 @@ init_shm(struct ipc_server *s)
 	ism->hmd.blend_mode_count = s->xsysd->static_roles.head->hmd->blend_mode_count;
 
 	// Finally tell the client how many devices we have.
-	s->ism->isdev_count = count;
+	ism->isdev_count = count;
 
 	// Assign all of the roles.
 	ism->roles.head = find_xdev_index(s, s->xsysd->static_roles.head);
@@ -433,7 +432,7 @@ init_shm(struct ipc_server *s)
 #undef SET_HT_ROLE
 
 	// Fill out git version info.
-	snprintf(s->ism->u_git_tag, IPC_VERSION_NAME_LEN, "%s", u_git_tag);
+	snprintf(ism->u_git_tag, IPC_VERSION_NAME_LEN, "%s", u_git_tag);
 
 	return XRT_SUCCESS;
 }
@@ -496,9 +495,6 @@ init_all(struct ipc_server *s, enum u_logging_level log_level)
 	// Always succeeds.
 	init_idevs(s);
 	init_tracking_origins(s);
-
-	xret = init_shm(s);
-	IPC_CHK_WITH_GOTO(s, xret, "init_shm", error);
 
 	ret = ipc_server_mainloop_init(&s->ml);
 	if (ret < 0) {
@@ -958,6 +954,16 @@ ipc_server_handle_client_connected(struct ipc_server *vs, xrt_ipc_handle_t ipc_h
 	ics->plane_detection_count = 0;
 	ics->plane_detection_ids = NULL;
 	ics->plane_detection_xdev = NULL;
+
+	xrt_result_t xret = init_shm(vs, ics);
+	if (xret != XRT_SUCCESS) {
+
+		// Unlock when we are done.
+		os_mutex_unlock(&vs->global_state.lock);
+
+		U_LOG_E("Failed to allocate shared memory!");
+		return;
+	}
 
 	os_thread_start(&it->thread, ipc_server_client_thread, (void *)ics);
 

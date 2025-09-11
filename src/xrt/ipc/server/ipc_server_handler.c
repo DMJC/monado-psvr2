@@ -301,7 +301,7 @@ ipc_handle_instance_get_shm_fd(volatile struct ipc_client_state *ics,
 
 	assert(max_handle_capacity >= 1);
 
-	out_handles[0] = ics->server->ism_handle;
+	out_handles[0] = get_ism_handle(ics);
 	*out_handle_count = 1;
 
 	return XRT_SUCCESS;
@@ -1326,7 +1326,7 @@ ipc_handle_compositor_layer_sync(volatile struct ipc_client_state *ics,
 		return XRT_ERROR_IPC_SESSION_NOT_CREATED;
 	}
 
-	struct ipc_shared_memory *ism = ics->server->ism;
+	struct ipc_shared_memory *ism = get_ism(ics);
 	struct ipc_layer_slot *slot = &ism->slots[slot_id];
 	xrt_graphics_sync_handle_t sync_handle = XRT_GRAPHICS_SYNC_HANDLE_INVALID;
 
@@ -1394,7 +1394,7 @@ ipc_handle_compositor_layer_sync_with_semaphore(volatile struct ipc_client_state
 
 	struct xrt_compositor_semaphore *xcsem = ics->xcsems[semaphore_id];
 
-	struct ipc_shared_memory *ism = ics->server->ism;
+	struct ipc_shared_memory *ism = get_ism(ics);
 	struct ipc_layer_slot *slot = &ism->slots[slot_id];
 
 	// Copy current slot data.
@@ -1863,7 +1863,7 @@ ipc_handle_device_update_input(volatile struct ipc_client_state *ics, uint32_t i
 {
 	// To make the code a bit more readable.
 	uint32_t device_id = id;
-	struct ipc_shared_memory *ism = ics->server->ism;
+	struct ipc_shared_memory *ism = get_ism(ics);
 	struct ipc_device *idev = get_idev(ics, device_id);
 	struct xrt_device *xdev = idev->xdev;
 	struct ipc_shared_device *isdev = &ism->isdevs[device_id];
@@ -1903,7 +1903,7 @@ ipc_handle_device_update_input(volatile struct ipc_client_state *ics, uint32_t i
 static struct xrt_input *
 find_input(volatile struct ipc_client_state *ics, uint32_t device_id, enum xrt_input_name name)
 {
-	struct ipc_shared_memory *ism = ics->server->ism;
+	struct ipc_shared_memory *ism = get_ism(ics);
 	struct ipc_shared_device *isdev = &ism->isdevs[device_id];
 	struct xrt_input *io = &ism->inputs[isdev->first_input_index];
 
@@ -2104,7 +2104,7 @@ ipc_handle_device_begin_plane_detection_ext(volatile struct ipc_client_state *ic
 		ics->plane_detection_size = new_count;
 	}
 
-	struct xrt_plane_detector_begin_info_ext *begin_info = &ics->server->ism->plane_begin_info_ext;
+	struct xrt_plane_detector_begin_info_ext *begin_info = &get_ism(ics)->plane_begin_info_ext;
 
 	enum xrt_result xret =
 	    xrt_device_begin_plane_detection_ext(xdev, begin_info, plane_detection_id, out_plane_detection_id);

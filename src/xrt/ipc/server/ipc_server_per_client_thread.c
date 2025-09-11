@@ -11,6 +11,8 @@
 #include "util/u_misc.h"
 #include "util/u_trace_marker.h"
 
+#include "shared/ipc_protocol.h"
+#include "shared/ipc_shmem.h"
 #include "shared/ipc_utils.h"
 #include "server/ipc_server.h"
 #include "ipc_server_generated.h"
@@ -69,6 +71,9 @@ common_shutdown(volatile struct ipc_client_state *ics)
 	os_mutex_lock(&ics->server->global_state.lock);
 
 	ipc_message_channel_close((struct ipc_message_channel *)&ics->imc);
+
+	ipc_shmem_destroy((xrt_shmem_handle_t *)&ics->ism_handle, (void **)&ics->server->isms[ics->server_thread_index],
+	                  sizeof(struct ipc_shared_memory));
 
 	ics->server->threads[ics->server_thread_index].state = IPC_THREAD_STOPPING;
 	ics->server_thread_index = -1;
