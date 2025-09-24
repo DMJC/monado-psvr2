@@ -8,11 +8,12 @@ function(oxr_bindings_gen output)
 	add_custom_command(
 		OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${output}"
 		COMMAND
-			${CMAKE_COMMAND} -E env PYTHONPATH=${AUX_BINDINGS_DIR};$ENV{PYTHONPATH}
+			${CMAKE_COMMAND} -E env
+			"PYTHONPATH=$<SHELL_PATH:${AUX_BINDINGS_DIR};$ENV{PYTHONPATH}>"
 			$<TARGET_FILE:${PYTHON_EXECUTABLE}>
 			${CMAKE_CURRENT_SOURCE_DIR}/oxr_bindings.py
 			${AUX_BINDINGS_DIR}/bindings.json "${CMAKE_CURRENT_BINARY_DIR}/${output}"
-		VERBATIM
+		COMMAND_EXPAND_LISTS VERBATIM
 		DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/oxr_bindings.py
 			${AUX_BINDINGS_DIR}/bindings.json
 		COMMENT "Generating ${output}"
