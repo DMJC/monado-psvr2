@@ -238,7 +238,7 @@ calc_vertex_rot_data(struct comp_renderer *r, struct xrt_matrix_2x2 out_vertex_r
 	}
 }
 
-static bool
+static void
 calc_pose_data(struct comp_renderer *r,
                enum comp_target_fov_source fov_source,
                struct xrt_fov out_fovs[XRT_MAX_VIEWS],
@@ -266,21 +266,12 @@ calc_pose_data(struct comp_renderer *r,
 	    &head_relation,                                  // out_head_relation
 	    xdev_fovs,                                       // out_fovs
 	    xdev_poses);                                     // out_poses
-
 	if (xret != XRT_SUCCESS) {
 		struct u_pp_sink_stack_only sink;
 		u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);
 		u_pp_xrt_result(dg, xret);
 		U_LOG_E("xrt_device_get_view_poses failed: %s", sink.buffer);
-		return false;
-	}
-
-	// Check if pose is valid (has valid position and orientation)
-	bool pose_valid = (head_relation.relation_flags & XRT_SPACE_RELATION_POSITION_VALID_BIT) &&
-	                  (head_relation.relation_flags & XRT_SPACE_RELATION_ORIENTATION_VALID_BIT);
-
-	if (!pose_valid) {
-		return false;
+		return;
 	}
 
 	struct xrt_fov dist_fov[XRT_MAX_VIEWS] = XRT_STRUCT_INIT;
@@ -314,8 +305,6 @@ calc_pose_data(struct comp_renderer *r,
 		r->c->base.frame_params.fovs[i] = fov;
 		r->c->base.frame_params.poses[i] = result.pose;
 	}
-
-	return true;
 }
 
 //! @pre comp_target_has_images(r->c->target)
@@ -879,18 +868,13 @@ dispatch_graphics(struct comp_renderer *r,
 	struct xrt_fov fovs[XRT_MAX_VIEWS];
 	struct xrt_pose world_poses[XRT_MAX_VIEWS];
 	struct xrt_pose eye_poses[XRT_MAX_VIEWS];
-	bool pose_valid = calc_pose_data( //
-	    r,                            //
-	    fov_source,                   //
-	    fovs,                         //
-	    world_poses,                  //
-	    eye_poses,                    //
-	    render->r->view_count);       //
-
-	// Skip layer rendering when pose is invalid
-	if (!pose_valid) {
-		layer_count = 0;
-	}
+	calc_pose_data(             //
+	    r,                      //
+	    fov_source,             //
+	    fovs,                   //
+	    world_poses,            //
+	    eye_poses,              //
+	    render->r->view_count); //
 
 	// Does everything.
 	chl_frame_state_gfx_default_pipeline( //
@@ -942,13 +926,13 @@ dispatch_compute(struct comp_renderer *r,
 	struct xrt_fov fovs[XRT_MAX_VIEWS];
 	struct xrt_pose world_poses[XRT_MAX_VIEWS];
 	struct xrt_pose eye_poses[XRT_MAX_VIEWS];
-	bool pose_valid = calc_pose_data( //
-	    r,                            //
-	    fov_source,                   //
-	    fovs,                         //
-	    world_poses,                  //
-	    eye_poses,                    //
-	    render->r->view_count);       //
+	calc_pose_data(             //
+	    r,                      //
+	    fov_source,             //
+	    fovs,                   //
+	    world_poses,            //
+	    eye_poses,              //
+	    render->r->view_count); //
 
 	// Target Vulkan resources..
 	VkImage target_image = r->c->target->images[r->acquired_buffer].handle;
@@ -958,22 +942,18 @@ dispatch_compute(struct comp_renderer *r,
 	struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS];
 	calc_viewport_data(r, target_viewport_datas, render->r->view_count);
 
-	// Show clear shader when pose is invalid, otherwise normal rendering
-	if (!pose_valid) {
-		render_compute_clear(render, target_image, target_storage_view, target_viewport_datas);
-	} else {
-		chl_frame_state_cs_default_pipeline( //
-		    frame_state,                     //
-		    render,                          //
-		    layers,                          //
-		    layer_count,                     //
-		    world_poses,                     //
-		    eye_poses,                       //
-		    fovs,                            //
-		    target_image,                    //
-		    target_storage_view,             //
-		    target_viewport_datas);          //
-	}
+	// Does everything.
+	chl_frame_state_cs_default_pipeline( //
+	    frame_state,                     //
+	    render,                          //
+	    layers,                          //
+	    layer_count,                     //
+	    world_poses,                     //
+	    eye_poses,                       //
+	    fovs,                            //
+	    target_image,                    //
+	    target_storage_view,             //
+	    target_viewport_datas);          //
 
 	// Everything is ready, submit to the queue.
 	ret = renderer_submit_queue(r, render->r->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
