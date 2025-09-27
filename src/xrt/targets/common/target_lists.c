@@ -190,7 +190,7 @@ struct xrt_prober_entry target_entry_list[] = {
 
 #ifdef XRT_BUILD_DRIVER_RIFT
     {OCULUS_VR_VID, OCULUS_DK2_PID, rift_found, "Rift (DK2)", "rift"},
-#endif // XRT_BUILD_DRIVER_HDK
+#endif // XRT_BUILD_DRIVER_RIFT
 
 #ifdef XRT_BUILD_DRIVER_ROKID
     {ROKID_VID, ROKID_PID, rokid_found, "Rokid Air or Max", "rokid"},

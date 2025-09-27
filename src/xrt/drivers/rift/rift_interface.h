@@ -3,7 +3,7 @@
 /*!
  * @file
  * @brief  Interface to Oculus Rift driver code.
- * @author Beyley Cardellion <ep1cm1n10n123@gmail.com>
+ * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
  * @ingroup drv_rift
  */
 
