@@ -12,7 +12,9 @@
 
 #include "math/m_vec2.h"
 #include "math/m_vec3.h"
+
 #include "util/u_logging.h"
+#include "util/u_distortion_mesh.h"
 
 /* Increase this number if anyone releases a headset with
  * more cameras */
@@ -50,18 +52,6 @@ enum wmr_camera_purpose
 	WMR_CAMERA_PURPOSE_DISPLAY_OBSERVER,
 };
 
-struct wmr_distortion_3K
-{
-	enum wmr_distortion_model model;
-
-	/* X/Y center of the distortion (pixels) */
-	struct xrt_vec2 eye_center;
-	/* k1,k2,k3 params for radial distortion as
-	 * per the radial distortion model in
-	 * https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html */
-	double k[3];
-};
-
 struct wmr_distortion_6KT
 {
 	enum wmr_distortion_model model;
@@ -83,9 +73,6 @@ struct wmr_distortion_6KT
 
 struct wmr_distortion_eye_config
 {
-	/* 3x3 camera matrix that moves from normalised camera coords (X/Z & Y/Z) to undistorted pixels */
-	struct xrt_matrix_3x3 affine_xform;
-
 	struct xrt_vec3 translation;    //!< Raw translation (to HT0)
 	struct xrt_matrix_3x3 rotation; //!< Raw rotation (to HT0), row major
 	struct xrt_pose pose;           //!< Pose from `translation` and `rotation`
@@ -98,8 +85,7 @@ struct wmr_distortion_eye_config
 	/* Center for the eye viewport visibility (pixels) */
 	struct xrt_vec2 visible_center;
 
-	/* RGB distortion params */
-	struct wmr_distortion_3K distortion3K[3];
+	struct u_poly_3k_eye_values poly_3k; //!< Distortion parameters for each channel
 };
 
 struct wmr_camera_config

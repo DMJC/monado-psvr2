@@ -90,12 +90,16 @@ wmr_config_parse_display(struct wmr_hmd_config *c, cJSON *display, enum u_loggin
 		return false;
 	}
 
+	struct xrt_matrix_3x3 affine_xform;
+
 	/* Extract display panel parameters */
 	cJSON *affine = cJSON_GetObjectItem(display, "Affine");
-	if (affine == NULL || u_json_get_float_array(affine, eye->affine_xform.v, 9) != 9) {
+	if (affine == NULL || u_json_get_float_array(affine, affine_xform.v, 9) != 9) {
 		WMR_ERROR(log_level, "Missing affine transform for AssignedEye \"%s\"", json_eye_name);
 		return false;
 	}
+
+	math_matrix_3x3_inverse(&affine_xform, &eye->poly_3k.inv_affine_xform);
 
 	if (!JSON_FLOAT(display, "DisplayWidth", &eye->display_size.x) ||
 	    !JSON_FLOAT(display, "DisplayHeight", &eye->display_size.y))
@@ -133,7 +137,7 @@ wmr_config_parse_display(struct wmr_hmd_config *c, cJSON *display, enum u_loggin
 	const char *channel_names[] = {"DistortionRed", "DistortionGreen", "DistortionBlue"};
 
 	for (int channel = 0; channel < 3; ++channel) {
-		struct wmr_distortion_3K *distortion3K = &eye->distortion3K[channel];
+		struct u_poly_3k_eye_values *distortion3K = &eye->poly_3k;
 
 		cJSON *dist = cJSON_GetObjectItemCaseSensitive(display, channel_names[channel]);
 		if (!dist) {
@@ -147,11 +151,8 @@ wmr_config_parse_display(struct wmr_hmd_config *c, cJSON *display, enum u_loggin
 			return false;
 		}
 
-		if (!strcmp(model_type, "CALIBRATION_DisplayDistortionModelPolynomial3K")) {
-			distortion3K->model = WMR_DISTORTION_MODEL_POLYNOMIAL_3K;
-		} else {
-			distortion3K->model = WMR_DISTORTION_MODEL_UNKNOWN;
-			WMR_ERROR(log_level, "Unknown distortion model %s", model_type);
+		if (strcmp(model_type, "CALIBRATION_DisplayDistortionModelPolynomial3K") != 0) {
+			WMR_ERROR(log_level, "Unknown display distortion model %s", model_type);
 			return false;
 		}
 
@@ -170,12 +171,12 @@ wmr_config_parse_display(struct wmr_hmd_config *c, cJSON *display, enum u_loggin
 			return false;
 		}
 
-		distortion3K->eye_center.x = parameters[0];
-		distortion3K->eye_center.y = parameters[1];
+		distortion3K->channels[channel].eye_center.x = parameters[0];
+		distortion3K->channels[channel].eye_center.y = parameters[1];
 
-		distortion3K->k[0] = parameters[2];
-		distortion3K->k[1] = parameters[3];
-		distortion3K->k[2] = parameters[4];
+		distortion3K->channels[channel].k[0] = parameters[2];
+		distortion3K->channels[channel].k[1] = parameters[3];
+		distortion3K->channels[channel].k[2] = parameters[4];
 	}
 
 	return true;

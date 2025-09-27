@@ -401,6 +401,144 @@ u_compute_distortion_ns_meshgrid(
 
 /*
  *
+ * Windows Mixed Reality distortion
+ *
+ */
+
+void
+u_compute_distortion_poly_3k(
+    struct u_poly_3k_eye_values *values, uint32_t view, float u, float v, struct xrt_uv_triplet *result)
+{
+	assert(view == 0 || view == 1);
+
+	const struct xrt_matrix_3x3 *inv_affine_xform = &values->inv_affine_xform;
+
+	// Results r/g/b.
+	struct xrt_vec2 tc[3];
+
+	// Dear compiler, please vectorize.
+	for (int channel = 0; channel < 3; channel++) {
+		const struct xrt_vec2_i32 display_size = values->channels[channel].display_size;
+		const struct xrt_vec2 eye_center = values->channels[channel].eye_center;
+		const double *k = values->channels[channel].k;
+
+		/* Scale the 0..1 input UV back to pixels relative to the distortion center,
+		 * accounting for the right eye starting at X = panel_width / 2.0 */
+		struct xrt_vec2 pix_coord = {(u + 1.0f * view) * (display_size.x / 2.0f) - eye_center.x,
+		                             v * display_size.y - eye_center.y};
+
+		pix_coord.y += (float)values->y_offset;
+
+		float r2 = m_vec2_dot(pix_coord, pix_coord);
+		float k1 = (float)k[0];
+		float k2 = (float)k[1];
+		float k3 = (float)k[2];
+
+		float d = 1.0f + r2 * (k1 + r2 * (k2 + r2 * k3));
+
+		/* Map the distorted pixel coordinate back to normalised view plane coords using the inverse affine
+		 * xform */
+		struct xrt_vec3 p = {(pix_coord.x * d + eye_center.x), (pix_coord.y * d + eye_center.y), 1.0f};
+		struct xrt_vec3 vp;
+		math_matrix_3x3_transform_vec3(inv_affine_xform, &p, &vp);
+
+		/* Finally map back to the input texture 0..1 range based on the render FoV (from tex_N_range.x ..
+		 * tex_N_range.y) */
+		tc[channel].x =
+		    ((vp.x / vp.z) - values->tex_x_range.x) / (values->tex_x_range.y - values->tex_x_range.x);
+		tc[channel].y =
+		    ((vp.y / vp.z) - values->tex_y_range.x) / (values->tex_y_range.y - values->tex_y_range.x);
+	}
+
+	result->r = tc[0];
+	result->g = tc[1];
+	result->b = tc[2];
+}
+
+void
+u_compute_distortion_bounds_poly_3k(const struct xrt_matrix_3x3 *inv_affine_xform,
+                                    struct u_poly_3k_distortion_values *values,
+                                    int view,
+                                    struct xrt_fov *out_fov,
+                                    struct xrt_vec2 *out_tex_x_range,
+                                    struct xrt_vec2 *out_tex_y_range)
+{
+	assert(view == 0 || view == 1);
+
+	float tanangle_left = 0.0f;
+	float tanangle_right = 0.0f;
+	float tanangle_up = 0.0f;
+	float tanangle_down = 0.0f;
+
+	for (int channel = 0; channel < 3; channel++) {
+		const struct xrt_vec2 eye_center = values[channel].eye_center;
+		const double *k = values[channel].k;
+
+		/* The X coords start at 0 for the left eye, and display_size.x / 2.0 for the right */
+		const struct xrt_vec2 pix_coords[4] = {
+		    /* -eye_center_x, 0 */
+		    {(1.0f * view) * (values->display_size.x / 2.0f) - eye_center.x, 0.0f},
+		    /* 0, -eye_center_y */
+		    {0.0f, -eye_center.y},
+		    /* width-eye_center_x, 0 */
+		    {(1.0f + 1.0f * view) * (values->display_size.x / 2.0f) - eye_center.x, 0.0f},
+		    /* 0, height-eye_center_y */
+		    {0.0f, values->display_size.y - eye_center.y},
+		};
+
+		for (int c = 0; c < 4; c++) {
+			const struct xrt_vec2 pix_coord = pix_coords[c];
+
+			float k1 = (float)k[0];
+			float k2 = (float)k[1];
+			float k3 = (float)k[2];
+
+			float r2 = m_vec2_dot(pix_coord, pix_coord);
+
+			/* distort the pixel */
+			float d = 1.0f + r2 * (k1 + r2 * (k2 + r2 * k3));
+
+			/* Map the distorted pixel coordinate back to normalised view plane coords using the inverse
+			 * affine xform */
+			struct xrt_vec3 p = {(pix_coord.x * d + eye_center.x), (pix_coord.y * d + eye_center.y), 1.0f};
+			struct xrt_vec3 vp;
+
+			math_matrix_3x3_transform_vec3(inv_affine_xform, &p, &vp);
+			vp.x /= vp.z;
+			vp.y /= vp.z;
+
+			if (pix_coord.x < 0.0f) {
+				if (vp.x < tanangle_left)
+					tanangle_left = vp.x;
+			} else {
+				if (vp.x > tanangle_right)
+					tanangle_right = vp.x;
+			}
+
+			if (pix_coord.y < 0.0f) {
+				if (vp.y < tanangle_up)
+					tanangle_up = vp.y;
+			} else {
+				if (vp.y > tanangle_down)
+					tanangle_down = vp.y;
+			}
+		}
+	}
+
+	out_fov->angle_left = atanf(tanangle_left);
+	out_fov->angle_right = atanf(tanangle_right);
+	out_fov->angle_down = -atanf(tanangle_down);
+	out_fov->angle_up = -atanf(tanangle_up);
+
+	out_tex_x_range->x = tanf(out_fov->angle_left);
+	out_tex_x_range->y = tanf(out_fov->angle_right);
+	out_tex_y_range->x = tanf(out_fov->angle_down);
+	out_tex_y_range->y = tanf(out_fov->angle_up);
+}
+
+
+/*
+ *
  * No distortion.
  *
  */
