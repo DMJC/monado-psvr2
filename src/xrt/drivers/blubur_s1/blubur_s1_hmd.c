@@ -499,6 +499,19 @@ blubur_s1_hmd_thread(void *ptr)
 	return NULL;
 }
 
+static struct xrt_binding_input_pair vive_pro_inputs_blubur_s1_hmd[1] = {
+    {XRT_INPUT_VIVEPRO_SYSTEM_CLICK, XRT_INPUT_BLUBUR_S1_MENU_CLICK},
+};
+
+// Exported to drivers.
+static struct xrt_binding_profile blubur_s1_hmd_binding_profiles[2] = {
+    {
+        .name = XRT_DEVICE_VIVE_PRO,
+        .inputs = vive_pro_inputs_blubur_s1_hmd,
+        .input_count = ARRAY_SIZE(vive_pro_inputs_blubur_s1_hmd),
+    },
+};
+
 struct blubur_s1_hmd *
 blubur_s1_hmd_create(struct os_hid_device *dev, const char *serial)
 {
@@ -580,6 +593,9 @@ blubur_s1_hmd_create(struct os_hid_device *dev, const char *serial)
 
 	hmd->base.inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;
 	hmd->base.inputs[1].name = XRT_INPUT_BLUBUR_S1_MENU_CLICK;
+
+	hmd->base.binding_profiles = blubur_s1_hmd_binding_profiles;
+	hmd->base.binding_profile_count = ARRAY_SIZE(blubur_s1_hmd_binding_profiles);
 
 	hmd->base.update_inputs = blubur_s1_hmd_update_inputs;
 	hmd->base.get_tracked_pose = blubur_s1_hmd_get_tracked_pose;
