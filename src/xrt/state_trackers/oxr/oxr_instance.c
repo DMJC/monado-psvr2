@@ -51,6 +51,7 @@ DEBUG_GET_ONCE_BOOL_OPTION(debug_spaces, "OXR_DEBUG_SPACES", false)
 DEBUG_GET_ONCE_BOOL_OPTION(debug_bindings, "OXR_DEBUG_BINDINGS", false)
 DEBUG_GET_ONCE_BOOL_OPTION(lifecycle_verbose, "OXR_LIFECYCLE_VERBOSE", false)
 DEBUG_GET_ONCE_TRISTATE_OPTION(parallel_views, "OXR_PARALLEL_VIEWS")
+DEBUG_GET_ONCE_BOOL_OPTION(map_stage_to_local_floor, "OXR_RECENTER_STAGE", false)
 
 
 #ifdef XRT_OS_ANDROID
@@ -218,6 +219,8 @@ apply_quirks(struct oxr_logger *log, struct oxr_instance *inst)
 	} else if (parallel_view == DEBUG_TRISTATE_ON) {
 		inst->quirks.parallel_views = true;
 	}
+
+	inst->quirks.map_stage_to_local_floor = debug_get_bool_option_map_stage_to_local_floor();
 }
 
 XrResult

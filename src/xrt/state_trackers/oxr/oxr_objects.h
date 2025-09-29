@@ -1760,6 +1760,9 @@ struct oxr_instance
 
 		//! For applications that rely on views being parallel, notably some OpenVR games with OpenComposite.
 		bool parallel_views;
+
+		//! For applications that use stage and don't offer recentering.
+		bool map_stage_to_local_floor;
 	} quirks;
 
 	//! Debug messengers

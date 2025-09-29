@@ -94,6 +94,29 @@ to_string(XrSessionState state)
 }
 
 static XrResult
+emit_reference_space_change_pending(struct oxr_logger *log,
+                                    struct oxr_session *sess,
+                                    struct xrt_session_event_reference_space_change_pending *ref_change,
+                                    XrReferenceSpaceType type)
+{
+	struct oxr_instance *inst = sess->sys->inst;
+	XrTime changeTime = time_state_monotonic_to_ts_ns(inst->timekeeping, ref_change->timestamp_ns);
+	const XrPosef *poseInPreviousSpace = (XrPosef *)&ref_change->pose_in_previous_space;
+	bool poseValid = ref_change->pose_valid;
+
+	//! @todo properly handle return (not done yet because requires larger rewrite),
+	oxr_event_push_XrEventDataReferenceSpaceChangePending( //
+	    log,                                               // log
+	    sess,                                              // sess
+	    type,                                              // referenceSpaceType
+	    changeTime,                                        // changeTime
+	    poseValid,                                         // poseValid
+	    poseInPreviousSpace);                              // poseInPreviousSpace
+
+	return XR_SUCCESS;
+}
+
+static XrResult
 handle_reference_space_change_pending(struct oxr_logger *log,
                                       struct oxr_session *sess,
                                       struct xrt_session_event_reference_space_change_pending *ref_change)
@@ -101,6 +124,19 @@ handle_reference_space_change_pending(struct oxr_logger *log,
 	struct oxr_instance *inst = sess->sys->inst;
 	XrReferenceSpaceType type = XR_REFERENCE_SPACE_TYPE_MAX_ENUM;
 
+	if (inst->quirks.map_stage_to_local_floor) {
+		/* When stage is mapped to local_floor:
+		 * ignore stage changes
+		 * for local_floor changes, send a duplicate envent for stage
+		 * */
+		switch (ref_change->ref_type) {
+		case XRT_SPACE_REFERENCE_TYPE_STAGE: return XR_SUCCESS;
+		case XRT_SPACE_REFERENCE_TYPE_LOCAL_FLOOR:
+			emit_reference_space_change_pending(log, sess, ref_change, XR_REFERENCE_SPACE_TYPE_STAGE);
+			break;
+		default: break;
+		}
+	}
 
 	switch (ref_change->ref_type) {
 	case XRT_SPACE_REFERENCE_TYPE_VIEW: type = XR_REFERENCE_SPACE_TYPE_VIEW; break;
@@ -138,18 +174,7 @@ handle_reference_space_change_pending(struct oxr_logger *log,
 		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "invalid reference space type");
 	}
 
-	XrTime changeTime = time_state_monotonic_to_ts_ns(inst->timekeeping, ref_change->timestamp_ns);
-	const XrPosef *poseInPreviousSpace = (XrPosef *)&ref_change->pose_in_previous_space;
-	bool poseValid = ref_change->pose_valid;
-
-	//! @todo properly handle return (not done yet because requires larger rewrite),
-	oxr_event_push_XrEventDataReferenceSpaceChangePending( //
-	    log,                                               // log
-	    sess,                                              // sess
-	    type,                                              // referenceSpaceType
-	    changeTime,                                        // changeTime
-	    poseValid,                                         // poseValid
-	    poseInPreviousSpace);                              // poseInPreviousSpace
+	emit_reference_space_change_pending(log, sess, ref_change, type);
 
 	return XR_SUCCESS;
 }
