@@ -73,11 +73,12 @@ distributions:
       # This image does some extra work.
       - codename: bookworm
         script: i386_and_proclamation_container_prep.sh
-        tag: "2025-08-26"
+        tag: "2025-10-01"
         deb_version_suffix: bpo12
         packages:
           <<: *default_debian_packages
           clang-format:
+          clang-tidy:
           codespell:
           doxygen:
           graphviz:
@@ -99,6 +100,7 @@ distributions:
             artifact_path: build/doc/html/
             cmake_defines:
               BUILD_DOC: "ON"
+              CMAKE_EXPORT_COMPILE_COMMANDS: "ON"
 
           - name: "debian:cmake-no-opencv"
             pahole: true

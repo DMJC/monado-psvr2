@@ -169,6 +169,11 @@ reuse:
 {%- if job.artifact_path or job.pahole %}
 
   artifacts:
+{%- if job.name == "debian:cmake"%}
+
+    untracked: true
+{%- endif %}
+
     paths:
 {%- if job.artifact_path%}
 
@@ -206,6 +211,18 @@ ipc-32-64-compatibility:
   script:
     - diff -du "debian:cmake-no-opencv/ipc-sizes.txt" "debian:cmake:32bit/ipc-sizes.txt"
     - cmp "debian:cmake-no-opencv/ipc-sizes.txt" "debian:cmake:32bit/ipc-sizes.txt"
+
+clang-tidy:
+  extends:
+    - .build-rules
+    - .monado.image.debian:bookworm
+  stage: check
+  dependencies:
+    - debian:cmake
+  script:
+    - file $(which run-clang-tidy)
+    - run-clang-tidy -quiet -p build
+    {# TODO -allow-no-checks when we have debian trixie #}
 
 {% for distro in distributions -%} {%- for image in distro.images if "deb_version_suffix" in image %}
 
