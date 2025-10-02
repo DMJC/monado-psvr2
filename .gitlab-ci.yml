@@ -641,6 +641,7 @@ windows:
 ipc-32-64-compatibility:
   stage: check
   dependencies: ["debian:cmake-no-opencv", "debian:cmake:32bit"]
+  needs: ["debian:cmake-no-opencv", "debian:cmake:32bit"]
   script:
     - diff -du "debian:cmake-no-opencv/ipc-sizes.txt" "debian:cmake:32bit/ipc-sizes.txt"
     - cmp "debian:cmake-no-opencv/ipc-sizes.txt" "debian:cmake:32bit/ipc-sizes.txt"
@@ -651,6 +652,8 @@ clang-tidy:
     - .monado.image.debian:bookworm
   stage: check
   dependencies:
+    - debian:cmake
+  needs:
     - debian:cmake
   script:
     - file $(which run-clang-tidy)
