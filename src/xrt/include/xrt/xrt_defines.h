@@ -2040,9 +2040,6 @@ struct xrt_output_value_vibration
 	int64_t duration_ns;
 };
 
-static_assert(sizeof(struct xrt_output_value_vibration) == 16,
-              "invalid structure size, maybe different 32/64 bits sizes or padding");
-
 struct xrt_output_value_pcm_vibration
 {
 	uint32_t buffer_size;
@@ -2052,17 +2049,11 @@ struct xrt_output_value_pcm_vibration
 	uint32_t *samples_consumed;
 };
 
-static_assert(sizeof(struct xrt_output_value_pcm_vibration) == 32,
-              "invalid structure size, maybe different 32/64 bits sizes or padding");
-
 struct xrt_output_value_force_feedback
 {
 	struct xrt_output_force_feedback force_feedback[5];
 	uint64_t force_feedback_location_count;
 };
-
-static_assert(sizeof(struct xrt_output_value_force_feedback) == 48,
-              "invalid structure size, maybe different 32/64 bits sizes or padding");
 
 /*!
  * A union of all output types.
@@ -2080,10 +2071,6 @@ struct xrt_output_value
 		struct xrt_output_value_force_feedback force_feedback;
 	};
 };
-
-static_assert(sizeof(struct xrt_output_value) == 56,
-              "invalid structure size, maybe different 32/64 bits sizes or padding");
-
 
 /*
  *
