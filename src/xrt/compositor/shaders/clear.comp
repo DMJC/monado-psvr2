@@ -33,7 +33,7 @@ void main()
 		return;
 	}
 
-	vec4 colour = vec4(from_linear_to_srgb(vec3(0.1)), 1.0);
+	vec4 colour = vec4(0, 0, 0, 1.0);
 
 	imageStore(target, ivec2(offset.x + ix, offset.y + iy), colour);
 }

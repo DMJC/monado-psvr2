@@ -113,7 +113,7 @@ struct gfx_mesh_data
  */
 
 static const VkClearColorValue background_color_idle = {
-    .float32 = {0.1f, 0.1f, 0.1f, 1.0f},
+    .float32 = {0.0f, 0.0f, 0.0f, 1.0f},
 };
 
 static const VkClearColorValue background_color_active = {
