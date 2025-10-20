@@ -20,7 +20,7 @@ buildscript {
         materialVersion = '1.12.0'
 
         // This is the version to download if we can't find it locally.
-        eigenFetchVersion = '3.4.0'
+        eigenFetchVersion = '5.0.0'
 
         // If you update this, must also update .gitlab-ci/config.yml
         buildToolsVersion = '34.0.0'
