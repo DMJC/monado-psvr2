@@ -81,13 +81,31 @@ tasks.register('unpackEigen', Copy) {
     into eigenUnpackDir
 }
 
+def eigenBuildDir = new File(project.buildDir, 'intermediates/eigen-build')
+tasks.register('configureEigen', Exec) {
+    dependsOn unpackEigen
+
+    doFirst {
+        eigenBuildDir.mkdirs()
+    }
+
+    workingDir eigenBuildDir
+
+    def eigenSourceDir = new File(eigenUnpackDir, "eigen-${project.eigenFetchVersion}")
+
+    def cmakePath = "${android.sdkDirectory}/cmake/${project.cmake_version}/bin/cmake"
+
+    commandLine cmakePath, eigenSourceDir.absolutePath
+}
+
 if (!(new File(project.file(project.eigenCMakeDir), "Eigen3Config.cmake")).exists()) {
     println "project.eigenCMakeDir not set or not valid, so downloading Eigen at build time"
-    project.ext.eigenCMakeDir = "${eigenUnpackDir}/eigen-${project.eigenFetchVersion}/cmake"
+    project.ext.eigenCMakeDir = "${eigenBuildDir}"
 } else {
     println "Using Eigen as specified/detected in project.eigenCMakeDir: ${project.eigenCMakeDir}"
     downloadEigen.enabled = false
     unpackEigen.enabled = false
+    configureEigen.enabled = false
 }
 
 // ***
@@ -192,7 +210,7 @@ android {
         preBuild.dependsOn(copyLicenses)
 
         // We also need the unpacked Eigen
-        preBuild.dependsOn(unpackEigen)
+        preBuild.dependsOn(configureEigen)
     }
 
     buildTypes {
