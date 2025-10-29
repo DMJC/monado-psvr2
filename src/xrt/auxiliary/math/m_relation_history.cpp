@@ -198,6 +198,10 @@ m_relation_history_estimate_motion(struct m_relation_history *rh,
 
 	float dt = (float)time_ns_to_s(timestamp - last_time_ns);
 
+	if (dt == 0) {
+		return false;
+	}
+
 	// Used to find out what values are valid in both the old relation and the new relation
 	enum xrt_space_relation_flags tmp_flags =
 	    (enum xrt_space_relation_flags)(last_relation.relation_flags & in_relation->relation_flags);
