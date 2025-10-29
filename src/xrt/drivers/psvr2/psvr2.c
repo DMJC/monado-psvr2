@@ -533,7 +533,7 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 	}
 
 	if (usb_data->unknown1 != 3) {
-		PSVR2_DEBUG(hmd, "SLAM - unknown1 field was not 3, it was %d", usb_data->unknown1);
+		PSVR2_TRACE(hmd, "SLAM - unknown1 field was not 3, it was %d", usb_data->unknown1);
 	}
 	// assert(usb_data->unknown1 == 3 || usb_data->unknown1 == 0);
 
@@ -570,8 +570,8 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 	math_vec3_accum(&tmp.position, &hmd->pose.position);
 	os_mutex_unlock(&hmd->data_lock);
 
-	PSVR2_DEBUG(hmd, "SLAM - %d leftover bytes", (int)sizeof(usb_data->remainder));
-	PSVR2_DEBUG_HEX(hmd, usb_data->remainder, sizeof(usb_data->remainder));
+	PSVR2_TRACE(hmd, "SLAM - %d leftover bytes", (int)sizeof(usb_data->remainder));
+	PSVR2_TRACE_HEX(hmd, usb_data->remainder, sizeof(usb_data->remainder));
 
 	if (!hmd->timestamp_initialized) {
 		int64_t now = os_monotonic_get_ns();
@@ -626,7 +626,7 @@ dump_xfer_cb(struct libusb_transfer *xfer)
 		return;
 	}
 
-	PSVR2_DEBUG(hmd, "%s xfer size %u", name, xfer->actual_length);
+	PSVR2_TRACE(hmd, "%s xfer size %u", name, xfer->actual_length);
 	PSVR2_TRACE_HEX(hmd, xfer->buffer, xfer->actual_length);
 
 	os_mutex_lock(&hmd->data_lock);
