@@ -108,7 +108,7 @@ enum psvr2_camera_mode
 	PSVR2_CAMERA_MODE_10 = 0x10,
 };
 
-bool
+void
 psvr2_compute_distortion_asymmetric(
     float *calibration, struct xrt_uv_triplet *distCoords, int eEye, float fU, float fV);
 

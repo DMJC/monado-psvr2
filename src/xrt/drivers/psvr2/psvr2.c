@@ -203,12 +203,14 @@ psvr2_hmd_destroy(struct xrt_device *xdev)
 	u_device_free(&hmd->base);
 }
 
-static bool
+static xrt_result_t
 psvr2_compute_distortion(struct xrt_device *xdev, uint32_t view, float u, float v, struct xrt_uv_triplet *result)
 {
 	struct psvr2_hmd *hmd = psvr2_hmd(xdev);
 
-	return psvr2_compute_distortion_asymmetric(hmd->distortion_calibration, result, view, u, v);
+	psvr2_compute_distortion_asymmetric(hmd->distortion_calibration, result, view, u, v);
+
+	return XRT_SUCCESS;
 }
 
 static xrt_result_t
@@ -249,7 +251,7 @@ psvr2_hmd_get_tracked_pose(struct xrt_device *xdev,
 	return XRT_SUCCESS;
 }
 
-static void
+static xrt_result_t
 psvr2_hmd_get_view_poses(struct xrt_device *xdev,
                          const struct xrt_vec3 *default_eye_relation,
                          int64_t at_timestamp_ns,
@@ -271,8 +273,8 @@ psvr2_hmd_get_view_poses(struct xrt_device *xdev,
 	struct xrt_vec3 eye_relation = *default_eye_relation;
 	eye_relation.x = hmd->info.lens_horizontal_separation_meters;
 
-	u_device_get_view_poses(xdev, &eye_relation, at_timestamp_ns, view_count, out_head_relation, out_fovs,
-	                        out_poses);
+	return u_device_get_view_poses(xdev, &eye_relation, at_timestamp_ns, view_count, out_head_relation, out_fovs,
+	                               out_poses);
 }
 
 void
@@ -1136,8 +1138,8 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	hmd->base.name = XRT_DEVICE_GENERIC_HMD;
 	hmd->base.device_type = XRT_DEVICE_TYPE_HMD;
 	hmd->base.inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;
-	hmd->base.orientation_tracking_supported = true;
-	hmd->base.position_tracking_supported = false;
+	hmd->base.supported.orientation_tracking = true;
+	hmd->base.supported.position_tracking = false;
 
 	// Set up display details
 	// refresh rate

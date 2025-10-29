@@ -1,10 +1,12 @@
 // Copyright 2024, Joel Valenciano
+// Copyright 2025, Beyley Cardellio
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
  * @brief  PSVR2 HMD distortion implementation
  *
  * @author Joel Valenciano <joelv1907@gmail.com>
+ * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
  * @ingroup drv_psvr2
  */
 
@@ -20,7 +22,7 @@ struct LookupItem_t
 };
 static const struct LookupItem_t lookup[1024];
 
-bool
+void
 psvr2_compute_distortion_asymmetric(float *calibration, struct xrt_uv_triplet *outCoords, int eEye, float fU, float fV)
 {
 	int lookup_index;
@@ -87,8 +89,6 @@ psvr2_compute_distortion_asymmetric(float *calibration, struct xrt_uv_triplet *o
 		coord->x = (k3 * a - k4 * b) * fx + cx;
 		coord->y = (k4 * a + k3 * b) * fy + cy;
 	}
-
-	return true;
 }
 
 static const struct LookupItem_t lookup[] = {
