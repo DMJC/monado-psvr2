@@ -90,27 +90,27 @@ struct psvr2_hmd
 
 	struct os_mutex data_lock;
 
-	uint8_t dprx_status;
-	xrt_atomic_s32_t proximity_sensor;
-	bool passthrough_button;
+	uint8_t dprx_status;               //< DisplayPort receiver status
+	xrt_atomic_s32_t proximity_sensor; //< Atomic state for whether the proximity sensor is triggered
+	bool passthrough_button;           //< Boolean state for whether the passthrough button is pressed
 
-	bool ipd_updated;
-	uint8_t ipd_mm;
+	bool ipd_updated; //< Whether the IPD has been updated, and an HMD info refresh is needed
+	uint8_t ipd_mm;   //< IPD dial value in mm, from 59 to 72mm
 
-	bool camera_enable;
-	enum psvr2_camera_mode camera_mode;
+	bool camera_enable;                 //< Whether the camera is enabled
+	enum psvr2_camera_mode camera_mode; //< The current camera mode
 	struct u_var_button camera_enable_btn;
 	struct u_var_button camera_mode_btn;
 
 	/* IMU input data */
-	uint32_t last_vts_us; //< Last VTS timestamp, in microseconds
-	uint16_t last_imu_ts;
-	struct xrt_vec3 last_gyro;
-	struct xrt_vec3 last_accel;
+	uint32_t last_vts_us;       //< Last VTS timestamp, in microseconds
+	uint16_t last_imu_ts;       //< Last IMU timestamp, in microseconds
+	struct xrt_vec3 last_gyro;  //< Last gyro reading, in rad/s
+	struct xrt_vec3 last_accel; //< Last accel reading, in m/s²
 
 	/* SLAM input data */
-	uint32_t last_slam_ts_us; //< Last slam timestamp, in microseconds
-	struct xrt_pose last_slam_pose;
+	uint32_t last_slam_ts_us;       //< Last slam timestamp, in microseconds
+	struct xrt_pose last_slam_pose; //< Last SLAM pose reading
 
 	struct xrt_pose slam_correction_pose;
 	struct u_var_button slam_correction_set_btn;
@@ -119,6 +119,7 @@ struct psvr2_hmd
 	/* Display parameters */
 	struct u_device_simple_info info;
 
+	/* Camera debug sinks */
 	struct u_sink_debug debug_sinks[4];
 
 	/* USB communication */
