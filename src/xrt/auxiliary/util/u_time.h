@@ -53,6 +53,13 @@ extern "C" {
  */
 #define U_TIME_1MS_IN_NS (1000 * 1000)
 
+/*
+ * The number of nanoseconds in a microsecond.
+
+ * @see timepoint_ns
+ */
+#define U_TIME_1US_IN_NS 1000
+
 /*!
  * The number of nanoseconds in half a millisecond.
  *
