@@ -3747,6 +3747,7 @@
 			"title": "Blubur S1",
 			"type": "tracked_hmd",
 			"monado_device": "XRT_DEVICE_BLUBUR_S1",
+			"extension": "MNDX_blubur_s1",
 			"extended_by": [],
 			"subaction_paths": [
 				"/user/head"
