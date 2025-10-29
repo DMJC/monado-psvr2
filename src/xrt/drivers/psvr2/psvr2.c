@@ -37,6 +37,7 @@
 #include "util/u_time.h"
 #include "util/u_trace_marker.h"
 #include "util/u_var.h"
+#include "util/u_debug.h"
 
 #include <stdio.h>
 #include <assert.h>
@@ -75,6 +76,8 @@
 		.orientation = {.x = 0, .y = 0, .z = sqrt(2) / 2, .w = sqrt(2) / 2 }                                   \
 	}
 
+DEBUG_GET_ONCE_FLOAT_OPTION(psvr2_default_brightness, "PSVR2_DEFAULT_BRIGHTNESS", 1.0f)
+
 /*!
  * PSVR2 HMD device
  *
@@ -90,6 +93,7 @@ struct psvr2_hmd
 
 	struct os_mutex data_lock;
 
+	/* Device status */
 	uint8_t dprx_status;               //< DisplayPort receiver status
 	xrt_atomic_s32_t proximity_sensor; //< Atomic state for whether the proximity sensor is triggered
 	bool passthrough_button;           //< Boolean state for whether the passthrough button is pressed
@@ -101,6 +105,9 @@ struct psvr2_hmd
 	enum psvr2_camera_mode camera_mode; //< The current camera mode
 	struct u_var_button camera_enable_btn;
 	struct u_var_button camera_mode_btn;
+
+	struct u_var_button brightness_btn;
+	float brightness;
 
 	/* IMU input data */
 	uint32_t last_vts_us;       //< Last VTS timestamp, in microseconds
@@ -177,6 +184,7 @@ DEBUG_GET_ONCE_LOG_OPTION(psvr2_log, "PSVR2_LOG", U_LOGGING_WARN)
 #define PSVR2_TRACE_HEX(p, data, data_size) U_LOG_XDEV_IFL_T_HEX(&p->base, p->log_level, data, data_size)
 #define PSVR2_DEBUG(p, ...) U_LOG_XDEV_IFL_D(&p->base, p->log_level, __VA_ARGS__)
 #define PSVR2_DEBUG_HEX(p, data, data_size) U_LOG_XDEV_IFL_D_HEX(&p->base, p->log_level, data, data_size)
+#define PSVR2_WARN(p, ...) U_LOG_XDEV_IFL_W(&p->base, p->log_level, __VA_ARGS__)
 #define PSVR2_ERROR(p, ...) U_LOG_XDEV_IFL_E(&p->base, p->log_level, __VA_ARGS__)
 
 static void
@@ -797,6 +805,46 @@ toggle_camera_enable(struct psvr2_hmd *hmd)
 	}
 }
 
+bool
+set_brightness(struct psvr2_hmd *hmd, float brightness)
+{
+	uint8_t brightness_byte = CLAMP(brightness * 31, 0, 31);
+
+	return send_psvr2_control(hmd, 0x12, 1, &brightness_byte, sizeof(brightness_byte));
+}
+
+static xrt_result_t
+psvr2_get_brightness(struct xrt_device *xdev, float *brightness)
+{
+	struct psvr2_hmd *hmd = psvr2_hmd(xdev);
+
+	os_mutex_lock(&hmd->data_lock);
+	*brightness = hmd->brightness;
+	os_mutex_unlock(&hmd->data_lock);
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+psvr2_set_brightness(struct xrt_device *xdev, float brightness, bool relative)
+{
+	struct psvr2_hmd *hmd = psvr2_hmd(xdev);
+
+	// Handle relative brightness adjustment
+	brightness = relative ? hmd->brightness + brightness : brightness;
+
+	if (!set_brightness(hmd, brightness)) {
+		PSVR2_ERROR(hmd, "Failed to set brightness to %.2f", brightness);
+		return XRT_ERROR_OUTPUT_REQUEST_FAILURE;
+	}
+
+	os_mutex_lock(&hmd->data_lock);
+	hmd->brightness = brightness;
+	os_mutex_unlock(&hmd->data_lock);
+
+	return XRT_SUCCESS;
+}
+
 static void
 cycle_camera_mode(struct psvr2_hmd *hmd)
 {
@@ -968,6 +1016,12 @@ reset_slam_correction(struct psvr2_hmd *hmd)
 	os_mutex_lock(&hmd->data_lock);
 	hmd->slam_correction_pose = (struct xrt_pose)SLAM_POSE_CORRECTION;
 	os_mutex_unlock(&hmd->data_lock);
+}
+
+static void
+update_brightness(struct psvr2_hmd *hmd)
+{
+	(void)set_brightness(hmd, hmd->brightness);
 }
 
 static void
@@ -1150,6 +1204,8 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	hmd->base.get_view_poses = psvr2_hmd_get_view_poses;
 	hmd->base.destroy = psvr2_hmd_destroy;
 	hmd->base.get_presence = psvr2_get_presence;
+	hmd->base.get_brightness = psvr2_get_brightness;
+	hmd->base.set_brightness = psvr2_set_brightness;
 
 	hmd->pose = (struct xrt_pose)XRT_POSE_IDENTITY;
 	hmd->log_level = debug_get_log_option_psvr2_log();
@@ -1166,6 +1222,7 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	hmd->base.supported.orientation_tracking = true;
 	hmd->base.supported.position_tracking = true;
 	hmd->base.supported.presence = true;
+	hmd->base.supported.brightness_control = true;
 
 	// Set up display details
 	// refresh rate
@@ -1236,6 +1293,11 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	u_var_add_bool(hmd, &hmd->passthrough_button, "HMD Passthrough button");
 	u_var_add_u8(hmd, &hmd->ipd_mm, "HMD IPD (mm)");
 
+	u_var_add_f32(hmd, &hmd->brightness, "Brightness");
+	hmd->brightness_btn.cb = (void (*)(void *))update_brightness;
+	hmd->brightness_btn.ptr = hmd;
+	u_var_add_button(hmd, &hmd->brightness_btn, "Set Brightness");
+
 	u_var_add_gui_header(hmd, NULL, "Camera data");
 	{
 		hmd->camera_enable_btn.cb = (void (*)(void *))toggle_camera_enable;
@@ -1255,6 +1317,12 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 
 	u_var_add_gui_header(hmd, NULL, "Logging");
 	u_var_add_log_level(hmd, &hmd->log_level, "log_level");
+
+	float initial_brightness = debug_get_float_option_psvr2_default_brightness();
+	if (!set_brightness(hmd, initial_brightness)) {
+		PSVR2_WARN(hmd, "Failed to set initial brightness");
+	}
+	hmd->brightness = initial_brightness;
 
 	// Start USB communications
 	hmd->usb_complete = 0;
