@@ -743,6 +743,7 @@ enum xrt_device_name
 	XRT_DEVICE_HYDRA,
 	XRT_DEVICE_RIFT_REMOTE,
 	XRT_DEVICE_BLUBUR_S1,
+	XRT_DEVICE_PSVR2,
 
 	// Other misc stuff.
 	XRT_DEVICE_HAND_TRACKER,
@@ -1301,7 +1302,10 @@ enum xrt_input_type
 	_(XRT_INPUT_RIFT_REMOTE_DPAD_UP_CLICK              , XRT_INPUT_NAME(0x0F07, BOOLEAN)) \
 	_(XRT_INPUT_RIFT_REMOTE_DPAD_LEFT_CLICK            , XRT_INPUT_NAME(0x0F08, BOOLEAN)) \
 \
-	_(XRT_INPUT_BLUBUR_S1_MENU_CLICK                   , XRT_INPUT_NAME(0x1000, BOOLEAN))
+	_(XRT_INPUT_BLUBUR_S1_MENU_CLICK                   , XRT_INPUT_NAME(0x1000, BOOLEAN)) \
+\
+	_(XRT_INPUT_PSVR2_SYSTEM_CLICK                     , XRT_INPUT_NAME(0x1100, BOOLEAN))
+
 
 // clang-format on
 
@@ -1984,7 +1988,9 @@ enum xrt_output_name
 	XRT_OUTPUT_NAME_TOUCH_PRO_HAPTIC            = XRT_OUTPUT_NAME(0x0400, VIBRATION),
 	XRT_OUTPUT_NAME_TOUCH_PRO_HAPTIC_TRIGGER    = XRT_OUTPUT_NAME(0x0500, VIBRATION),
 	XRT_OUTPUT_NAME_TOUCH_PRO_HAPTIC_THUMB      = XRT_OUTPUT_NAME(0x0600, VIBRATION),
-	XRT_OUTPUT_NAME_TOUCH_PLUS_HAPTIC           = XRT_OUTPUT_NAME(0x0700, VIBRATION)
+	XRT_OUTPUT_NAME_TOUCH_PLUS_HAPTIC           = XRT_OUTPUT_NAME(0x0700, VIBRATION),
+
+	XRT_OUTPUT_NAME_PSVR2_HAPTIC                = XRT_OUTPUT_NAME(0x0800, VIBRATION),
 	// clang-format on
 };
 
@@ -2219,6 +2225,18 @@ xrt_reference_dec_and_is_zero(struct xrt_reference *xref)
 	XRT_REFERENCE_DEBUG_PRINT(Decremented, xref, count);
 
 	return count == 0;
+}
+
+static inline bool
+xrt_device_name_is_hmd(enum xrt_device_name name)
+{
+	switch (name) {
+	case XRT_DEVICE_GENERIC_HMD:
+	case XRT_DEVICE_VIVE_PRO:
+	case XRT_DEVICE_BLUBUR_S1:
+	case XRT_DEVICE_PSVR2: return true;
+	default: return false;
+	}
 }
 
 #ifdef __cplusplus

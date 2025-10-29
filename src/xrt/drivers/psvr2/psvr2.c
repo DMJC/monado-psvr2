@@ -96,7 +96,7 @@ struct psvr2_hmd
 	/* Device status */
 	uint8_t dprx_status;               //< DisplayPort receiver status
 	xrt_atomic_s32_t proximity_sensor; //< Atomic state for whether the proximity sensor is triggered
-	bool passthrough_button;           //< Boolean state for whether the passthrough button is pressed
+	bool function_button;              //< Boolean state for whether the function button is pressed
 
 	bool ipd_updated; //< Whether the IPD has been updated, and an HMD info refresh is needed
 	uint8_t ipd_mm;   //< IPD dial value in mm, from 59 to 72mm
@@ -231,7 +231,15 @@ psvr2_compute_distortion(struct xrt_device *xdev, uint32_t view, float u, float 
 static xrt_result_t
 psvr2_hmd_update_inputs(struct xrt_device *xdev)
 {
-	// Empty, you should put code to update the attached input fields (if any)
+	struct psvr2_hmd *hmd = psvr2_hmd(xdev);
+
+	timepoint_ns now = os_monotonic_get_ns();
+
+	os_mutex_lock(&hmd->data_lock);
+	hmd->base.inputs[1].value.boolean = hmd->function_button;
+	hmd->base.inputs[1].timestamp = now;
+	os_mutex_unlock(&hmd->data_lock);
+
 	return XRT_SUCCESS;
 }
 
@@ -370,7 +378,7 @@ process_status_report(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read, timep
 
 	hmd->dprx_status = hdr->dprx_status;
 	hmd->proximity_sensor = hdr->prox_sensor_flag;
-	hmd->passthrough_button = hdr->passthrough_button;
+	hmd->function_button = hdr->function_button;
 
 	hmd->ipd_updated |= (hmd->ipd_mm != hdr->ipd_dial_mm);
 	hmd->ipd_mm = hdr->ipd_dial_mm;
@@ -845,6 +853,24 @@ psvr2_set_brightness(struct xrt_device *xdev, float brightness, bool relative)
 	return XRT_SUCCESS;
 }
 
+static xrt_result_t
+psvr2_hmd_set_output(struct xrt_device *xdev, enum xrt_output_name name, const struct xrt_output_value *value)
+{
+	switch (name) {
+	case XRT_OUTPUT_NAME_PSVR2_HAPTIC: {
+		struct xrt_output_value_vibration vibration = value->vibration;
+		(void)vibration;
+
+		// @todo: Implement headset haptics.
+
+		break;
+	}
+	default: return XRT_ERROR_OUTPUT_UNSUPPORTED;
+	}
+
+	return XRT_SUCCESS;
+}
+
 static void
 cycle_camera_mode(struct psvr2_hmd *hmd)
 {
@@ -1167,6 +1193,27 @@ psvr2_setup_distortion_and_fovs(struct psvr2_hmd *hmd)
 	fovs[1].angle_right = -fovs[0].angle_left;
 }
 
+static struct xrt_binding_input_pair vive_pro_inputs_psvr2[] = {
+    {XRT_INPUT_VIVEPRO_SYSTEM_CLICK, XRT_INPUT_PSVR2_SYSTEM_CLICK},
+};
+
+static struct xrt_binding_input_pair blubur_s1_inputs_psvr2[] = {
+    {XRT_INPUT_BLUBUR_S1_MENU_CLICK, XRT_INPUT_PSVR2_SYSTEM_CLICK},
+};
+
+static struct xrt_binding_profile psvr2_binding_profiles[] = {
+    {
+        .name = XRT_DEVICE_VIVE_PRO,
+        .inputs = vive_pro_inputs_psvr2,
+        .input_count = ARRAY_SIZE(vive_pro_inputs_psvr2),
+    },
+    {
+        .name = XRT_DEVICE_BLUBUR_S1,
+        .inputs = blubur_s1_inputs_psvr2,
+        .input_count = ARRAY_SIZE(blubur_s1_inputs_psvr2),
+    },
+};
+
 struct xrt_device *
 psvr2_hmd_create(struct xrt_prober_device *xpdev)
 {
@@ -1176,7 +1223,7 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	enum u_device_alloc_flags flags =
 	    (enum u_device_alloc_flags)(U_DEVICE_ALLOC_HMD | U_DEVICE_ALLOC_TRACKING_NONE);
 
-	struct psvr2_hmd *hmd = U_DEVICE_ALLOCATE(struct psvr2_hmd, flags, 1, 0);
+	struct psvr2_hmd *hmd = U_DEVICE_ALLOCATE(struct psvr2_hmd, flags, 2, 1);
 
 	if (os_mutex_init(&hmd->data_lock) != 0) {
 		PSVR2_ERROR(hmd, "Failed to init data mutex!");
@@ -1206,6 +1253,7 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	hmd->base.get_presence = psvr2_get_presence;
 	hmd->base.get_brightness = psvr2_get_brightness;
 	hmd->base.set_brightness = psvr2_set_brightness;
+	hmd->base.set_output = psvr2_hmd_set_output;
 
 	hmd->pose = (struct xrt_pose)XRT_POSE_IDENTITY;
 	hmd->log_level = debug_get_log_option_psvr2_log();
@@ -1215,9 +1263,15 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	snprintf(hmd->base.serial, XRT_DEVICE_NAME_LEN, "PS VR2 HMD S/N"); //! @todo Add serial number
 
 	// Setup input.
-	hmd->base.name = XRT_DEVICE_GENERIC_HMD;
+	hmd->base.name = XRT_DEVICE_PSVR2;
 	hmd->base.device_type = XRT_DEVICE_TYPE_HMD;
 	hmd->base.inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;
+	hmd->base.inputs[1].name = XRT_INPUT_PSVR2_SYSTEM_CLICK;
+
+	hmd->base.outputs[0].name = XRT_OUTPUT_NAME_PSVR2_HAPTIC;
+
+	hmd->base.binding_profiles = psvr2_binding_profiles;
+	hmd->base.binding_profile_count = ARRAY_SIZE(psvr2_binding_profiles);
 
 	hmd->base.supported.orientation_tracking = true;
 	hmd->base.supported.position_tracking = true;
@@ -1290,7 +1344,7 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	u_var_add_gui_header(hmd, NULL, "Status");
 	u_var_add_u8(hmd, &hmd->dprx_status, "HMD Display Port RX status");
 	u_var_add_ro_i32(hmd, (int32_t *)&hmd->proximity_sensor, "HMD Proximity");
-	u_var_add_bool(hmd, &hmd->passthrough_button, "HMD Passthrough button");
+	u_var_add_bool(hmd, &hmd->function_button, "HMD Function button");
 	u_var_add_u8(hmd, &hmd->ipd_mm, "HMD IPD (mm)");
 
 	u_var_add_f32(hmd, &hmd->brightness, "Brightness");

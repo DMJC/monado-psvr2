@@ -64,9 +64,9 @@ struct imu_usb_record
 
 struct status_record_hdr
 {
-	uint8_t dprx_status;        //< 0 = not ready. 2 = cinematic? and 1 = unknown. HDCP? Other?
-	uint8_t prox_sensor_flag;   //< 0 = not triggered. 1 = triggered?
-	uint8_t passthrough_button; //< 0 = not pressed, 1 = pressed
+	uint8_t dprx_status;      //< 0 = not ready. 2 = cinematic? and 1 = unknown. HDCP? Other?
+	uint8_t prox_sensor_flag; //< 0 = not triggered. 1 = triggered?
+	uint8_t function_button;  //< 0 = not pressed, 1 = pressed
 	uint8_t empty0[2];
 	uint8_t ipd_dial_mm; //< 59 to 72mm
 

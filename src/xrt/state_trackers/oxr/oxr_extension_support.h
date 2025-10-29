@@ -841,6 +841,17 @@
 
 
 /*
+ * XR_MNDX_psvr2_interaction
+ */
+#if defined(XR_MNDX_psvr2_interaction) && defined(XRT_FEATURE_OPENXR_INTERACTION_MNDX)
+#define OXR_HAVE_MNDX_psvr2_interaction
+#define OXR_EXTENSION_SUPPORT_MNDX_psvr2_interaction(_) _(MNDX_psvr2_interaction, MNDX_PSVR2_INTERACTION)
+#else
+#define OXR_EXTENSION_SUPPORT_MNDX_psvr2_interaction(_)
+#endif
+
+
+/*
  * XR_MNDX_system_buttons
  */
 #if defined(XR_MNDX_system_buttons) && defined(XRT_FEATURE_OPENXR_INTERACTION_MNDX)
@@ -957,6 +968,7 @@
     OXR_EXTENSION_SUPPORT_MNDX_egl_enable(_) \
     OXR_EXTENSION_SUPPORT_MNDX_force_feedback_curl(_) \
     OXR_EXTENSION_SUPPORT_MNDX_hydra(_) \
+    OXR_EXTENSION_SUPPORT_MNDX_psvr2_interaction(_) \
     OXR_EXTENSION_SUPPORT_MNDX_system_buttons(_) \
     OXR_EXTENSION_SUPPORT_MNDX_xdev_space(_)
 // clang-format on

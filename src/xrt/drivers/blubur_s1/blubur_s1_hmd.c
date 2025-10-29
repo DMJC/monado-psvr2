@@ -502,12 +502,12 @@ blubur_s1_hmd_thread(void *ptr)
 	return NULL;
 }
 
-static struct xrt_binding_input_pair vive_pro_inputs_blubur_s1_hmd[1] = {
+static struct xrt_binding_input_pair vive_pro_inputs_blubur_s1_hmd[] = {
     {XRT_INPUT_VIVEPRO_SYSTEM_CLICK, XRT_INPUT_BLUBUR_S1_MENU_CLICK},
 };
 
 // Exported to drivers.
-static struct xrt_binding_profile blubur_s1_hmd_binding_profiles[2] = {
+static struct xrt_binding_profile blubur_s1_hmd_binding_profiles[] = {
     {
         .name = XRT_DEVICE_VIVE_PRO,
         .inputs = vive_pro_inputs_blubur_s1_hmd,

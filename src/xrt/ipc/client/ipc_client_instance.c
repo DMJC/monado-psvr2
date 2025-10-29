@@ -323,7 +323,7 @@ ipc_instance_create(const struct xrt_instance_info *i_info, struct xrt_instance 
 		struct ipc_shared_device *isdev = &ism->isdevs[i];
 		xtrack = ii->xtracks[isdev->tracking_origin_index];
 
-		if (isdev->name == XRT_DEVICE_GENERIC_HMD) {
+		if (xrt_device_name_is_hmd(isdev->name)) {
 			ii->xdevs[count++] = ipc_client_hmd_create(&ii->ipc_c, xtrack, i);
 		} else {
 			ii->xdevs[count++] = ipc_client_device_create(&ii->ipc_c, xtrack, i);
