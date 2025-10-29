@@ -201,7 +201,7 @@ psvr2_hmd_destroy(struct xrt_device *xdev)
 	os_thread_helper_lock(&hmd->usb_thread);
 	hmd->usb_complete = 1;
 	os_thread_helper_unlock(&hmd->usb_thread);
-	os_thread_helper_stop_and_wait(&hmd->usb_thread);
+	os_thread_helper_destroy(&hmd->usb_thread);
 
 	psvr2_usb_destroy(hmd);
 
@@ -209,11 +209,14 @@ psvr2_hmd_destroy(struct xrt_device *xdev)
 		libusb_close(hmd->dev);
 	}
 
+	if (hmd->ctx != NULL) {
+		libusb_exit(hmd->ctx);
+	}
+
 	// Remove the variable tracking.
 	u_var_remove_root(hmd);
 
 	m_relation_history_destroy(&hmd->relation_history);
-	os_thread_helper_destroy(&hmd->usb_thread);
 	os_mutex_destroy(&hmd->data_lock);
 	u_device_free(&hmd->base);
 }
