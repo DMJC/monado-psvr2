@@ -25,6 +25,7 @@
 #include "math/m_api.h"
 #include "math/m_clock_tracking.h"
 #include "math/m_mathinclude.h"
+#include "math/m_relation_history.h"
 
 #include "util/u_misc.h"
 #include "util/u_debug.h"
@@ -146,6 +147,7 @@ struct psvr2_hmd
 	 * PS VR2. */
 	float distortion_calibration[8];
 
+	/* Timing data */
 	bool timestamp_initialized;
 
 	timepoint_ns last_vts_ns;
@@ -155,6 +157,9 @@ struct psvr2_hmd
 
 	time_duration_ns hw2mono;
 	time_duration_ns hw2mono_imu;
+
+	/* Tracking state */
+	struct m_relation_history *relation_history;
 };
 
 
@@ -198,6 +203,7 @@ psvr2_hmd_destroy(struct xrt_device *xdev)
 	// Remove the variable tracking.
 	u_var_remove_root(hmd);
 
+	m_relation_history_destroy(&hmd->relation_history);
 	os_thread_helper_destroy(&hmd->usb_thread);
 	os_mutex_destroy(&hmd->data_lock);
 	u_device_free(&hmd->base);
@@ -235,18 +241,13 @@ psvr2_hmd_get_tracked_pose(struct xrt_device *xdev,
 
 	os_mutex_lock(&hmd->data_lock);
 
-	// Estimate pose at timestamp at_timestamp_ns!
+	// Estimate pose at timestamp at_timestamp_ns
 	timepoint_ns prediction_ns_mono = at_timestamp_ns - hmd->system_zero_ns;
 	timepoint_ns prediction_ns_hw = prediction_ns_mono - hmd->hw2mono;
-	(void)prediction_ns_hw; // @todo Use estimated time to predict the headset pose.
-
-	math_quat_normalize(&hmd->pose.orientation);
-	out_relation->pose = hmd->pose;
-	out_relation->relation_flags = (enum xrt_space_relation_flags)(
-	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_VALID_BIT |
-	    XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT);
 
 	os_mutex_unlock(&hmd->data_lock);
+
+	m_relation_history_get(hmd->relation_history, prediction_ns_hw, out_relation);
 
 	return XRT_SUCCESS;
 }
@@ -584,8 +585,15 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 	    .pose = hmd->pose,
 	};
 
-	// TODO: process SLAM pose into fusion
-	(void)pose_sample;
+	struct xrt_space_relation relation = {
+	    .pose = pose_sample.pose,
+	    .relation_flags = (enum xrt_space_relation_flags)(
+	        XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_VALID_BIT |
+	        XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT),
+	};
+	m_relation_history_estimate_motion(hmd->relation_history, &relation, pose_sample.timestamp_ns, &relation);
+
+	m_relation_history_push(hmd->relation_history, &relation, pose_sample.timestamp_ns);
 }
 
 static void LIBUSB_CALL
@@ -1124,6 +1132,8 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 		PSVR2_ERROR(hmd, "Failed to initialise threading");
 		goto cleanup;
 	}
+
+	m_relation_history_create(&hmd->relation_history);
 
 	if (!psvr2_usb_open(hmd, xpdev)) {
 		goto cleanup;
