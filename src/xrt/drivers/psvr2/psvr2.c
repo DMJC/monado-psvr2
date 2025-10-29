@@ -90,7 +90,7 @@ struct psvr2_hmd
 	struct os_mutex data_lock;
 
 	uint8_t dprx_status;
-	bool proximity_sensor;
+	xrt_atomic_s32_t proximity_sensor;
 	bool passthrough_button;
 
 	bool ipd_updated;
@@ -247,6 +247,18 @@ psvr2_hmd_get_tracked_pose(struct xrt_device *xdev,
 	    XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT);
 
 	os_mutex_unlock(&hmd->data_lock);
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+psvr2_get_presence(struct xrt_device *xdev, bool *presence)
+{
+	struct psvr2_hmd *hmd = psvr2_hmd(xdev);
+
+	int32_t value = hmd->proximity_sensor;
+
+	*presence = value;
 
 	return XRT_SUCCESS;
 }
@@ -1126,6 +1138,7 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	hmd->base.get_tracked_pose = psvr2_hmd_get_tracked_pose;
 	hmd->base.get_view_poses = psvr2_hmd_get_view_poses;
 	hmd->base.destroy = psvr2_hmd_destroy;
+	hmd->base.get_presence = psvr2_get_presence;
 
 	hmd->pose = (struct xrt_pose)XRT_POSE_IDENTITY;
 	hmd->log_level = debug_get_log_option_psvr2_log();
@@ -1138,8 +1151,10 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	hmd->base.name = XRT_DEVICE_GENERIC_HMD;
 	hmd->base.device_type = XRT_DEVICE_TYPE_HMD;
 	hmd->base.inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;
+
 	hmd->base.supported.orientation_tracking = true;
-	hmd->base.supported.position_tracking = false;
+	hmd->base.supported.position_tracking = true;
+	hmd->base.supported.presence = true;
 
 	// Set up display details
 	// refresh rate
@@ -1206,7 +1221,7 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 
 	u_var_add_gui_header(hmd, NULL, "Status");
 	u_var_add_u8(hmd, &hmd->dprx_status, "HMD Display Port RX status");
-	u_var_add_bool(hmd, &hmd->proximity_sensor, "HMD Proximity");
+	u_var_add_ro_i32(hmd, (int32_t *)&hmd->proximity_sensor, "HMD Proximity");
 	u_var_add_bool(hmd, &hmd->passthrough_button, "HMD Passthrough button");
 	u_var_add_u8(hmd, &hmd->ipd_mm, "HMD IPD (mm)");
 
