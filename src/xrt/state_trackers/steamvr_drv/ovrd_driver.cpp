@@ -1428,9 +1428,9 @@ CDeviceDriver_Monado::ComputeDistortion(vr::EVREye eEye, float fU, float fV)
 
 	struct xrt_uv_triplet d;
 
-	if (!m_xdev->compute_distortion(m_xdev, eEye, U, V, &d)) {
-		ovrd_log("Failed to compute distortion for view %d at %f,%f!\n", eEye, U, V);
-
+        xrt_result_t xret = m_xdev->compute_distortion(m_xdev, eEye, U, V, &d);
+        if (xret != XRT_SUCCESS) {
+                ovrd_log("Failed to compute distortion for view %d at %f,%f: %d!\n", eEye, U, V, xret);
 		vr::DistortionCoordinates_t coordinates;
 		coordinates.rfBlue[0] = U;
 		coordinates.rfBlue[1] = V;

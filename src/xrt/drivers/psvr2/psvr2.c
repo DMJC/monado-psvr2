@@ -25,6 +25,7 @@
 #include "math/m_api.h"
 #include "math/m_clock_tracking.h"
 #include "math/m_mathinclude.h"
+#include "math/m_vec3.h"
 #include "math/m_relation_history.h"
 
 #include "util/u_misc.h"
@@ -70,6 +71,9 @@
 #define ACCEL_SCALE (4.0 * MATH_GRAVITY_M_S2 / 32767.0)
 
 #define DEG_TO_RAD(D) ((D)*M_PI / 180.)
+
+#define PSVR2_SMOOTHING_ALPHA 1.0f
+#define PSVR2_MAX_ROTATION_SPEED_DEG_PER_MS 7.8f
 
 #define SLAM_POSE_CORRECTION                                                                                           \
 	{                                                                                                              \
@@ -193,6 +197,35 @@ psvr2_usb_stop(struct psvr2_hmd *hmd);
 static void
 psvr2_usb_destroy(struct psvr2_hmd *hmd);
 
+// Helper to safely check whether the usb_thread run-loop is active.
+static bool
+psvr2_usb_thread_is_active(struct os_thread_helper *th)
+{
+    bool active = false;
+    os_thread_helper_lock(th);
+    active = os_thread_helper_is_running_locked(th);
+    os_thread_helper_unlock(th);
+    return active;
+}
+
+// After issuing libusb_cancel_transfer()s, drain event processing until all
+// outstanding xfers have reached their callbacks and decremented the counter.
+static void
+psvr2_wait_cancelled(struct psvr2_hmd *hmd)
+{
+    for (;;) {
+        int remaining;
+        os_thread_helper_lock(&hmd->usb_thread);
+        remaining = hmd->usb_active_xfers;
+        os_thread_helper_unlock(&hmd->usb_thread);
+        if (remaining <= 0) {
+            break;
+        }
+        // Let libusb run callbacks and finish cancellations.
+        libusb_handle_events_completed(hmd->ctx, &hmd->usb_complete);
+    }
+}
+
 static void
 psvr2_hmd_destroy(struct xrt_device *xdev)
 {
@@ -201,7 +234,14 @@ psvr2_hmd_destroy(struct xrt_device *xdev)
 	os_thread_helper_lock(&hmd->usb_thread);
 	hmd->usb_complete = 1;
 	os_thread_helper_unlock(&hmd->usb_thread);
-	os_thread_helper_destroy(&hmd->usb_thread);
+
+    // Stop & join the thread iff active (avoids asserts on already-stopped).
+    if (psvr2_usb_thread_is_active(&hmd->usb_thread)) {
+        os_thread_helper_stop_and_wait(&hmd->usb_thread);
+    }
+
+    // Now the helper object can be torn down.
+    os_thread_helper_destroy(&hmd->usb_thread);
 
 	psvr2_usb_destroy(hmd);
 
@@ -557,63 +597,130 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 		PSVR2_TRACE(hmd, "SLAM - unknown1 field was not 3, it was %d", usb_data->unknown1);
 	}
 	// assert(usb_data->unknown1 == 3 || usb_data->unknown1 == 0);
+        struct xrt_pose pose_for_history = {};
+        timepoint_ns pose_timestamp = 0;
+        bool pose_ready = false;
 
-	os_mutex_lock(&hmd->data_lock);
+        os_mutex_lock(&hmd->data_lock);
 
-	if (!hmd->timestamp_initialized) {
-		// Initialize all timestamps on first SLAM frame
-		hmd->system_zero_ns = os_monotonic_get_ns();
-		hmd->last_vts_ns = 0;
-		hmd->last_slam_ns = 0;
-		hmd->last_imu_ns = 0;
-		hmd->timestamp_initialized = true;
-	} else {
-		// @note Overflow expected and fine, since this is an unsigned subtraction
-		uint32_t slam_ts_delta_us = slam.ts_us - hmd->last_slam_ts_us;
+        bool have_prev_pose = hmd->last_slam_ts_us != 0;
+        struct xrt_pose prev_filtered_pose = hmd->pose;
+        struct xrt_pose prev_raw_pose = hmd->last_slam_pose;
 
-		hmd->last_slam_ns += (timepoint_ns)slam_ts_delta_us * U_TIME_1US_IN_NS;
-	}
+        timepoint_ns new_slam_ns = hmd->last_slam_ns;
+        float slam_dt_s = 0.0f;
 
-	//@todo: Manual axis correction should come from calibration somewhere I think
-	hmd->last_slam_ts_us = slam.ts_us;
-	hmd->last_slam_pose.position.x = slam.pos[2];
-	hmd->last_slam_pose.position.y = slam.pos[1];
-	hmd->last_slam_pose.position.z = -slam.pos[0];
-	hmd->last_slam_pose.orientation.w = slam.orient[0];
-	hmd->last_slam_pose.orientation.x = -slam.orient[2];
-	hmd->last_slam_pose.orientation.y = -slam.orient[1];
-	hmd->last_slam_pose.orientation.z = slam.orient[3];
+        if (!hmd->timestamp_initialized) {
+                // Initialize all timestamps on first SLAM frame
+                hmd->system_zero_ns = os_monotonic_get_ns();
+                hmd->last_vts_ns = 0;
+                hmd->last_slam_ns = 0;
+                hmd->last_imu_ns = 0;
+                hmd->timestamp_initialized = true;
+                new_slam_ns = 0;
+        } else {
+                // @note Overflow expected and fine, since this is an unsigned subtraction
+                uint32_t slam_ts_delta_us = slam.ts_us - hmd->last_slam_ts_us;
 
-	struct xrt_pose tmp = hmd->slam_correction_pose;
-	math_quat_normalize(&tmp.orientation);
-	math_quat_rotate(&tmp.orientation, &hmd->last_slam_pose.orientation, &hmd->pose.orientation);
-	hmd->pose.position = hmd->last_slam_pose.position;
-	math_vec3_accum(&tmp.position, &hmd->pose.position);
-	os_mutex_unlock(&hmd->data_lock);
+                new_slam_ns += (timepoint_ns)slam_ts_delta_us * U_TIME_1US_IN_NS;
+                if (slam_ts_delta_us > 0) {
+                        slam_dt_s = (float)slam_ts_delta_us / 1000000.0f;
+                }
+        }
 
-	PSVR2_TRACE(hmd, "SLAM - %d leftover bytes", (int)sizeof(usb_data->remainder));
-	PSVR2_TRACE_HEX(hmd, usb_data->remainder, sizeof(usb_data->remainder));
+        struct xrt_pose new_raw_pose = {0};
+        new_raw_pose.position.x = slam.pos[2];
+        new_raw_pose.position.y = slam.pos[1];
+        new_raw_pose.position.z = -slam.pos[0];
+        new_raw_pose.orientation.w = slam.orient[0];
+        new_raw_pose.orientation.x = -slam.orient[2];
+        new_raw_pose.orientation.y = -slam.orient[1];
+        new_raw_pose.orientation.z = slam.orient[3];
 
-	if (!hmd->timestamp_initialized) {
-		int64_t now = os_monotonic_get_ns();
-		hmd->timestamp_initialized = true;
-		hmd->system_zero_ns = now;
-	}
+        bool discard_sample = false;
+        float angular_speed_deg_per_ms = 0.0f;
+        if (have_prev_pose && slam_dt_s > 0.0f) {
+                struct xrt_quat delta = {0};
+                struct xrt_vec3 axis_angle = {0};
+                math_quat_unrotate(&prev_raw_pose.orientation, &new_raw_pose.orientation, &delta);
+                math_quat_ln(&delta, &axis_angle);
+                float angle_rad = 2.0f * m_vec3_len(axis_angle);
+                float angular_speed = angle_rad / slam_dt_s;
+                float angular_speed_deg = angular_speed * (180.0f / (float)M_PI);
+                angular_speed_deg_per_ms = angular_speed_deg / 1000.0f;
+                if (angular_speed_deg_per_ms > PSVR2_MAX_ROTATION_SPEED_DEG_PER_MS) {
+                        discard_sample = true;
+                }
+        }
 
-	struct xrt_pose_sample pose_sample = {
-	    .timestamp_ns = hmd->last_slam_ns,
-	    .pose = hmd->pose,
-	};
+        if (!discard_sample) {
+                //@todo: Manual axis correction should come from calibration somewhere I think
+                struct xrt_pose corrected_pose = new_raw_pose;
+                struct xrt_pose tmp = hmd->slam_correction_pose;
+                math_quat_normalize(&tmp.orientation);
+                math_quat_rotate(&tmp.orientation, &corrected_pose.orientation, &corrected_pose.orientation);
+                math_vec3_accum(&tmp.position, &corrected_pose.position);
 
-	struct xrt_space_relation relation = {
-	    .pose = pose_sample.pose,
-	    .relation_flags = (enum xrt_space_relation_flags)(
-	        XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_VALID_BIT |
-	        XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT),
-	};
-	m_relation_history_estimate_motion(hmd->relation_history, &relation, pose_sample.timestamp_ns, &relation);
+                struct xrt_pose filtered_pose = corrected_pose;
+                if (have_prev_pose) {
+                        math_quat_slerp(&prev_filtered_pose.orientation, &corrected_pose.orientation,
+                                        PSVR2_SMOOTHING_ALPHA, &filtered_pose.orientation);
+                        math_quat_normalize(&filtered_pose.orientation);
+                        filtered_pose.position.x =
+                            prev_filtered_pose.position.x +
+                            (corrected_pose.position.x - prev_filtered_pose.position.x) * PSVR2_SMOOTHING_ALPHA;
+                        filtered_pose.position.y =
+                            prev_filtered_pose.position.y +
+                            (corrected_pose.position.y - prev_filtered_pose.position.y) * PSVR2_SMOOTHING_ALPHA;
+                        filtered_pose.position.z =
+                            prev_filtered_pose.position.z +
+                            (corrected_pose.position.z - prev_filtered_pose.position.z) * PSVR2_SMOOTHING_ALPHA;
+                }
 
-	m_relation_history_push(hmd->relation_history, &relation, pose_sample.timestamp_ns);
+                hmd->last_slam_ts_us = slam.ts_us;
+                hmd->last_slam_ns = new_slam_ns;
+                hmd->last_slam_pose = new_raw_pose;
+                hmd->pose = filtered_pose;
+
+                pose_for_history = hmd->pose;
+                pose_timestamp = hmd->last_slam_ns;
+                pose_ready = true;
+        }
+
+        os_mutex_unlock(&hmd->data_lock);
+
+        if (discard_sample) {
+                PSVR2_DEBUG(hmd,
+                            "Discarding SLAM sample due to excessive rotation speed: %.2f deg/ms (limit %.2f)",
+                            angular_speed_deg_per_ms, PSVR2_MAX_ROTATION_SPEED_DEG_PER_MS);
+                PSVR2_TRACE(hmd, "SLAM - %d leftover bytes", (int)sizeof(usb_data->remainder));
+                PSVR2_TRACE_HEX(hmd, usb_data->remainder, sizeof(usb_data->remainder));
+                return;
+        }
+
+        if (!pose_ready) {
+                PSVR2_TRACE(hmd, "SLAM - %d leftover bytes", (int)sizeof(usb_data->remainder));
+                PSVR2_TRACE_HEX(hmd, usb_data->remainder, sizeof(usb_data->remainder));
+                return;
+        }
+
+        PSVR2_TRACE(hmd, "SLAM - %d leftover bytes", (int)sizeof(usb_data->remainder));
+        PSVR2_TRACE_HEX(hmd, usb_data->remainder, sizeof(usb_data->remainder));
+
+        struct xrt_pose_sample pose_sample = {
+            .timestamp_ns = pose_timestamp,
+            .pose = pose_for_history,
+        };
+
+        struct xrt_space_relation relation = {
+            .pose = pose_sample.pose,
+            .relation_flags = (enum xrt_space_relation_flags)(
+                XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_VALID_BIT |
+                XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT),
+        };
+        m_relation_history_estimate_motion(hmd->relation_history, &relation, pose_sample.timestamp_ns, &relation);
+
+        m_relation_history_push(hmd->relation_history, &relation, pose_sample.timestamp_ns);
 }
 
 static void LIBUSB_CALL
@@ -1059,6 +1166,8 @@ psvr2_usb_stop(struct psvr2_hmd *hmd)
 	int ret;
 
 	os_mutex_lock(&hmd->data_lock);
+	// Signal to any loops using this flag that shutdown is in progress.
+    hmd->usb_complete = 1;
 	if (hmd->vd_xfer) {
 		ret = libusb_cancel_transfer(hmd->vd_xfer);
 		assert(ret == 0 || ret == LIBUSB_ERROR_NOT_FOUND);
@@ -1087,11 +1196,19 @@ psvr2_usb_stop(struct psvr2_hmd *hmd)
 	}
 
 	os_mutex_unlock(&hmd->data_lock);
+	// Drain cancellations deterministically before freeing transfers.
+    psvr2_wait_cancelled(hmd);
 }
 
 void
 psvr2_usb_destroy(struct psvr2_hmd *hmd)
 {
+        // Stop the USB thread cleanly
+        os_thread_helper_stop_and_wait(&hmd->usb_thread);
+
+        // Now it is safe to cancel and free transfers
+        psvr2_usb_stop(hmd);
+
 	// All transfers are stopped and can be freed now
 	if (hmd->status_xfer) {
 		libusb_free_transfer(hmd->status_xfer);
@@ -1109,16 +1226,31 @@ psvr2_usb_destroy(struct psvr2_hmd *hmd)
 	}
 	if (hmd->led_detector_xfer) {
 		libusb_free_transfer(hmd->led_detector_xfer);
-		hmd->slam_xfer = NULL;
+		hmd->led_detector_xfer = NULL;
 	}
 	if (hmd->relocalizer_xfer) {
 		libusb_free_transfer(hmd->relocalizer_xfer);
-		hmd->slam_xfer = NULL;
+		hmd->relocalizer_xfer = NULL;
 	}
 	if (hmd->vd_xfer) {
 		libusb_free_transfer(hmd->vd_xfer);
-		hmd->slam_xfer = NULL;
+		hmd->vd_xfer = NULL;
 	}
+	
+    // Release claimed interfaces (mirrors psvr2_usb_open()).
+    if (hmd->dev) {
+        for (size_t i = 0; i < sizeof(interface_list) / sizeof(interface_list[0]); i++) {
+            (void)libusb_release_interface(hmd->dev, interface_list[i].interface_no);
+        }
+    }
+        /*if (hmd->dev) {
+            libusb_close(hmd->dev);
+            hmd->dev = NULL;
+        }
+        if (hmd->ctx) {
+            libusb_exit(hmd->ctx);
+            hmd->ctx = NULL;
+        }*/
 }
 
 struct distortion_calibration_block
