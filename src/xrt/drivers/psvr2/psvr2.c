@@ -73,7 +73,7 @@
 #define DEG_TO_RAD(D) ((D)*M_PI / 180.)
 
 #define PSVR2_SMOOTHING_ALPHA 0.2f
-#define PSVR2_MAX_ROTATION_SPEED_DEG_PER_SEC 780.0f
+#define PSVR2_MAX_ROTATION_SPEED_DEG_PER_MS 7.8f
 
 #define SLAM_POSE_CORRECTION                                                                                           \
 	{                                                                                                              \
@@ -603,7 +603,7 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
         new_raw_pose.orientation.z = slam.orient[3];
 
         bool discard_sample = false;
-        float angular_speed_deg = 0.0f;
+        float angular_speed_deg_per_ms = 0.0f;
         if (have_prev_pose && slam_dt_s > 0.0f) {
                 struct xrt_quat delta = {0};
                 struct xrt_vec3 axis_angle = {0};
@@ -611,8 +611,9 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
                 math_quat_ln(&delta, &axis_angle);
                 float angle_rad = 2.0f * m_vec3_len(axis_angle);
                 float angular_speed = angle_rad / slam_dt_s;
-                angular_speed_deg = angular_speed * (180.0f / (float)M_PI);
-                if (angular_speed_deg > PSVR2_MAX_ROTATION_SPEED_DEG_PER_SEC) {
+                float angular_speed_deg = angular_speed * (180.0f / (float)M_PI);
+                angular_speed_deg_per_ms = angular_speed_deg / 1000.0f;
+                if (angular_speed_deg_per_ms > PSVR2_MAX_ROTATION_SPEED_DEG_PER_MS) {
                         discard_sample = true;
                 }
         }
@@ -655,8 +656,8 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 
         if (discard_sample) {
                 PSVR2_DEBUG(hmd,
-                            "Discarding SLAM sample due to excessive rotation speed: %.1f deg/s (limit %.1f)",
-                            angular_speed_deg, PSVR2_MAX_ROTATION_SPEED_DEG_PER_SEC);
+                            "Discarding SLAM sample due to excessive rotation speed: %.2f deg/ms (limit %.2f)",
+                            angular_speed_deg_per_ms, PSVR2_MAX_ROTATION_SPEED_DEG_PER_MS);
                 PSVR2_TRACE(hmd, "SLAM - %d leftover bytes", (int)sizeof(usb_data->remainder));
                 PSVR2_TRACE_HEX(hmd, usb_data->remainder, sizeof(usb_data->remainder));
                 return;
