@@ -61,6 +61,8 @@
 #define USB_CAM_MODE1_XFER_SIZE 819456
 #define NUM_CAM_XFERS 1
 
+#define SERIAL_LENGTH 14
+
 #define USB_LD_XFER_SIZE 36944
 
 #define USB_RP_XFER_SIZE 821120
@@ -931,6 +933,22 @@ set_brightness(struct psvr2_hmd *hmd, float brightness)
 	return send_psvr2_control(hmd, 0x12, 1, &brightness_byte, sizeof(brightness_byte));
 }
 
+bool
+get_serial(struct psvr2_hmd *hmd, char serial[static(SERIAL_LENGTH + 1)])
+{
+	uint8_t buf[504];
+
+	if (!get_psvr2_control(hmd, 0x81, 0x1, buf, sizeof(buf))) {
+		PSVR2_ERROR(hmd, "Failed to get device information packet.");
+		return false;
+	}
+
+	memcpy(serial, buf + 56, SERIAL_LENGTH);
+	serial[SERIAL_LENGTH] = '\0';
+
+	return true;
+}
+
 static xrt_result_t
 psvr2_get_brightness(struct xrt_device *xdev, float *brightness)
 {
@@ -1512,6 +1530,13 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 		PSVR2_WARN(hmd, "Failed to set initial brightness");
 	}
 	hmd->brightness = initial_brightness;
+
+	char serial[SERIAL_LENGTH + 1];
+	if (get_serial(hmd, serial)) {
+		snprintf(hmd->base.serial, XRT_DEVICE_NAME_LEN, "%s", serial);
+	} else {
+		PSVR2_WARN(hmd, "Failed to get serial number");
+	}
 
 	// Start USB communications
 	hmd->usb_complete = 0;
