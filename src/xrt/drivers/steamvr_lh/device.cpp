@@ -36,7 +36,8 @@
 #include <cstring>
 #include <thread>
 #include <algorithm>
-#include <map>
+#include <array>
+#include <iterator>
 
 
 #define DEV_ERR(...) U_LOG_IFL_E(ctx->log_level, __VA_ARGS__)
@@ -174,53 +175,79 @@ device_bouncer(struct xrt_device *xdev, Args... args)
 	return std::invoke(Func, dev, args...);
 }
 
-// Setting used for brightness in the steamvr section. This isn't defined by the openvr header.
-static const char *analog_gain_settings_key = "analogGain";
-
-/**
- * Map a 0-1 (or > 1) brightness value into the analogGain value stored in SteamVR settings.
- */
-float
-brightness_to_analog_gain(float brightness)
-{
-	// Lookup table from brightness to analog gain value
-	// Courtesy of OyasumiVR, MIT license, Copyright (c) 2022 Raphiiko
-	// https://github.com/Raphiiko/OyasumiVR/blob/c9e7fbcc2ea6caa07a8233a75218598087043171/src-ui/app/services/brightness-control/hardware-brightness-drivers/valve-index-hardware-brightness-control-driver.ts#L92
-	// TODO: We should support having a lookup table per headset model. If not present, fallback to lerp between the
-	// given min and max analog gain. Maybe we can assume 100% brightness = 1.0 analog gain, but we need info from
-	// more headsets.
-	static const auto lookup = std::map<float, float>{{
-	    {0.20, 0.03},  {0.23, 0.04},  {0.26, 0.05},  {0.27, 0.055}, {0.28, 0.06},  {0.30, 0.07},  {0.32, 0.08},
-	    {0.33, 0.09},  {0.34, 0.095}, {0.35, 0.1},   {0.36, 0.105}, {0.37, 0.11},  {0.37, 0.115}, {0.38, 0.12},
-	    {0.39, 0.125}, {0.40, 0.13},  {0.40, 0.135}, {0.41, 0.14},  {0.42, 0.145}, {0.42, 0.15},  {0.43, 0.155},
-	    {0.43, 0.16},  {0.44, 0.165}, {0.45, 0.17},  {0.45, 0.175}, {0.46, 0.18},  {0.46, 0.185}, {0.47, 0.19},
-	    {0.48, 0.195}, {0.48, 0.2},   {0.49, 0.21},  {0.53, 0.25},  {0.58, 0.3},   {0.59, 0.315}, {0.60, 0.32},
-	    {0.60, 0.33},  {0.61, 0.34},  {0.62, 0.35},  {0.66, 0.4},   {0.69, 0.445}, {0.70, 0.45},  {0.70, 0.46},
-	    {0.71, 0.465}, {0.71, 0.47},  {0.71, 0.475}, {0.72, 0.48},  {0.72, 0.49},  {0.73, 0.5},   {0.79, 0.6},
-	    {0.85, 0.7},   {0.90, 0.8},   {0.95, 0.9},   {1.00, 1},     {1.50, 1.50},
-	}};
-
-	if (const auto upper_it = lookup.upper_bound(brightness); upper_it == lookup.end()) {
-		return lookup.rbegin()->second;
-	} else if (upper_it == lookup.begin()) {
-		return upper_it->second;
-	} else {
-		// Linearly interpolate between the greater and lower points
-		const auto lower_it = std::prev(upper_it);
-		const auto brightness_range = (upper_it->first - lower_it->first);
-		const auto blend_amount = ((brightness - lower_it->first) / brightness_range);
-		return std::lerp(lower_it->second, upper_it->second, blend_amount);
-	}
-
-	return brightness;
-}
+namespace {
+constexpr std::array<std::pair<float, float>, 55> kBrightnessAnalogPairs = {{
+    {0.20f, 0.03f},  {0.23f, 0.04f},  {0.26f, 0.05f},  {0.27f, 0.055f}, {0.28f, 0.06f},  {0.30f, 0.07f},
+    {0.32f, 0.08f},  {0.33f, 0.09f},  {0.34f, 0.095f}, {0.35f, 0.10f},  {0.36f, 0.105f}, {0.37f, 0.11f},
+    {0.37f, 0.115f}, {0.38f, 0.12f},  {0.39f, 0.125f}, {0.40f, 0.13f},  {0.40f, 0.135f}, {0.41f, 0.14f},
+    {0.42f, 0.145f}, {0.42f, 0.15f},  {0.43f, 0.155f}, {0.43f, 0.16f},  {0.44f, 0.165f}, {0.45f, 0.17f},
+    {0.45f, 0.175f}, {0.46f, 0.18f},  {0.46f, 0.185f}, {0.47f, 0.19f},  {0.48f, 0.195f}, {0.48f, 0.20f},
+    {0.49f, 0.21f},  {0.53f, 0.25f},  {0.58f, 0.30f},  {0.59f, 0.315f}, {0.60f, 0.32f},  {0.60f, 0.33f},
+    {0.61f, 0.34f},  {0.62f, 0.35f},  {0.66f, 0.40f},  {0.69f, 0.445f}, {0.70f, 0.45f},  {0.70f, 0.46f},
+    {0.71f, 0.465f}, {0.71f, 0.47f},  {0.71f, 0.475f}, {0.72f, 0.48f},  {0.72f, 0.49f},  {0.73f, 0.50f},
+    {0.79f, 0.60f},  {0.85f, 0.70f},  {0.90f, 0.80f},  {0.95f, 0.90f},  {1.00f, 1.00f},  {1.50f, 1.50f},
+}};
 } // namespace
+
+float
+HmdDevice::brightness_to_analog_gain(float brightness)
+{
+        const auto &lookup = kBrightnessAnalogPairs;
+
+        auto upper = std::upper_bound(lookup.begin(), lookup.end(), brightness, [](float value, const auto &entry) {
+                return value < entry.first;
+        });
+
+        if (upper == lookup.end()) {
+                return lookup.back().second;
+        }
+
+        if (upper == lookup.begin()) {
+                return upper->second;
+        }
+
+        auto lower = std::prev(upper);
+        const float brightness_range = upper->first - lower->first;
+        if (brightness_range <= 0.0f) {
+                return upper->second;
+        }
+
+        const float blend_amount = (brightness - lower->first) / brightness_range;
+        return std::lerp(lower->second, upper->second, blend_amount);
+}
+
+float
+HmdDevice::analog_gain_to_brightness(float analog_gain)
+{
+        const auto &lookup = kBrightnessAnalogPairs;
+
+        auto upper = std::find_if(lookup.begin(), lookup.end(), [analog_gain](const auto &entry) {
+                return analog_gain <= entry.second;
+        });
+
+        if (upper == lookup.begin()) {
+                return upper->first;
+        }
+
+        if (upper == lookup.end()) {
+                return lookup.back().first;
+        }
+
+        auto lower = std::prev(upper);
+        const float analog_range = upper->second - lower->second;
+        if (analog_range <= 0.0f) {
+                return upper->first;
+        }
+
+        const float blend_amount = (analog_gain - lower->second) / analog_range;
+        return std::lerp(lower->first, upper->first, blend_amount);
+}
 
 Property::Property(vr::PropertyTypeTag_t tag, void *buffer, uint32_t bufferSize)
 {
-	this->tag = tag;
-	this->buffer.resize(bufferSize);
-	std::memcpy(this->buffer.data(), buffer, bufferSize);
+        this->tag = tag;
+        this->buffer.resize(bufferSize);
+        std::memcpy(this->buffer.data(), buffer, bufferSize);
 }
 
 HmdDevice::HmdDevice(const DeviceBuilder &builder) : Device(builder)
@@ -482,31 +509,47 @@ Device::get_pose(uint64_t at_timestamp_ns, xrt_space_relation *out_relation)
 xrt_result_t
 Device::get_battery_status(bool *out_present, bool *out_charging, float *out_charge)
 {
-	*out_present = this->provides_battery_status;
-	*out_charging = this->charging;
-	*out_charge = this->charge;
-	return XRT_SUCCESS;
+        *out_present = this->provides_battery_status;
+        *out_charging = this->charging;
+        *out_charge = this->charge;
+        return XRT_SUCCESS;
+}
+
+void
+HmdDevice::apply_brightness(float new_brightness, bool notify_settings)
+{
+        constexpr auto min_brightness = 0.2f;
+        constexpr auto max_brightness = 1.5f;
+
+        this->brightness = std::clamp(new_brightness, min_brightness, max_brightness);
+
+        const float analog_gain =
+            std::clamp(HmdDevice::brightness_to_analog_gain(this->brightness), analog_gain_range.min, analog_gain_range.max);
+
+        ctx->settings.sync_analog_gain_from_device(analog_gain, notify_settings);
 }
 
 xrt_result_t
 HmdDevice::get_brightness(float *out_brightness)
 {
-	*out_brightness = this->brightness;
-	return XRT_SUCCESS;
+        *out_brightness = this->brightness;
+        return XRT_SUCCESS;
 }
 
 xrt_result_t
 HmdDevice::set_brightness(float brightness, bool relative)
 {
-	constexpr auto min_brightness = 0.2f;
-	constexpr auto max_brightness = 1.5f;
+        const float target_brightness = relative ? (this->brightness + brightness) : brightness;
+        apply_brightness(target_brightness, true);
+        return XRT_SUCCESS;
+}
 
-	const auto target_brightness = relative ? (this->brightness + brightness) : brightness;
-	this->brightness = std::clamp(target_brightness, min_brightness, max_brightness);
-	const auto analog_gain =
-	    std::clamp(brightness_to_analog_gain(this->brightness), analog_gain_range.min, analog_gain_range.max);
-	ctx->settings.SetFloat(vr::k_pch_SteamVR_Section, analog_gain_settings_key, analog_gain);
-	return XRT_SUCCESS;
+void
+HmdDevice::apply_analog_gain(float analog_gain)
+{
+        const float clamped_gain = std::clamp(analog_gain, analog_gain_range.min, analog_gain_range.max);
+        const float target_brightness = HmdDevice::analog_gain_to_brightness(clamped_gain);
+        apply_brightness(target_brightness, false);
 }
 
 xrt_result_t
@@ -1030,12 +1073,16 @@ HmdDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		set_nominal_frame_interval((1.f / freq) * 1e9f);
 		break;
 	}
-	case vr::Prop_UserIpdMeters_Float: {
-		if (*static_cast<float *>(prop.pvBuffer) != 0) {
-			ipd = *static_cast<float *>(prop.pvBuffer);
-		}
-		break;
-	}
+        case vr::Prop_UserIpdMeters_Float: {
+                if (*static_cast<float *>(prop.pvBuffer) != 0) {
+                        float new_ipd = *static_cast<float *>(prop.pvBuffer);
+                        if (new_ipd != ipd) {
+                                ipd = new_ipd;
+                                ctx->add_vendor_event(vr::VREvent_SteamVRSectionSettingChanged);
+                        }
+                }
+                break;
+        }
 	case vr::Prop_SecondsFromVsyncToPhotons_Float: {
 		vsync_to_photon_ns = *static_cast<float *>(prop.pvBuffer) * 1e9f;
 		break;

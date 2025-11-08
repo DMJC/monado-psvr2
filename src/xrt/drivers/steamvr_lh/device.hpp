@@ -193,19 +193,31 @@ public:
 		return ipd;
 	}
 
-	xrt_result_t
-	get_brightness(float *out_brightness);
-	xrt_result_t
-	set_brightness(float brightness, bool relative);
+        xrt_result_t
+        get_brightness(float *out_brightness);
+        xrt_result_t
+        set_brightness(float brightness, bool relative);
 
-	bool
-	init_vive_pro_2(struct xrt_prober *xp);
+        static float
+        brightness_to_analog_gain(float brightness);
+
+        static float
+        analog_gain_to_brightness(float analog_gain);
+
+        void
+        apply_analog_gain(float analog_gain);
+
+        bool
+        init_vive_pro_2(struct xrt_prober *xp);
 
 private:
-	std::unique_ptr<Parts> hmd_parts{nullptr};
+        std::unique_ptr<Parts> hmd_parts{nullptr};
 
-	vr::ETrackedPropertyError
-	handle_property_write(const vr::PropertyWrite_t &prop) override;
+        void
+        apply_brightness(float new_brightness, bool notify_settings);
+
+        vr::ETrackedPropertyError
+        handle_property_write(const vr::PropertyWrite_t &prop) override;
 
 	void
 	set_nominal_frame_interval(uint64_t interval_ns);
