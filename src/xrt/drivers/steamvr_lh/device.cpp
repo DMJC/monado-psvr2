@@ -158,6 +158,8 @@ const std::unordered_map<std::string_view, InputClass> controller_classes{
     },
 };
 
+} // namespace
+
 int64_t
 chrono_timestamp_ns()
 {
