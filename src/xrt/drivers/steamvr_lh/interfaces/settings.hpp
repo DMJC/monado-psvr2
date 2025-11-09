@@ -20,9 +20,10 @@ private:
 	const xrt::auxiliary::util::json::JSONNode steamvr_settings;
 	const xrt::auxiliary::util::json::JSONNode driver_defaults;
 
-	Context *context;
+        Context *context;
 
-	float analog_gain;
+        float analog_gain;
+        bool analog_gain_update_from_device{false};
 
 public:
 	Settings(const std::string &steam_install, const std::string &steamvr_install, Context *context);
@@ -69,8 +70,11 @@ public:
 
 	void
 	RemoveSection(const char *pchSection, vr::EVRSettingsError *peError = nullptr) override;
-	void
-	RemoveKeyInSection(const char *pchSection,
-	                   const char *pchSettingsKey,
-	                   vr::EVRSettingsError *peError = nullptr) override;
+        void
+        RemoveKeyInSection(const char *pchSection,
+                           const char *pchSettingsKey,
+                           vr::EVRSettingsError *peError = nullptr) override;
+
+        void
+        sync_analog_gain_from_device(float analog_gain, bool notify_context = true);
 };

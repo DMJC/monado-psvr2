@@ -10,11 +10,11 @@
 #include <openvr_driver.h>
 #include <optional>
 #include <cstring>
-#include <map>
 #include <string_view>
 
 #include "settings.hpp"
 #include "context.hpp"
+#include "../device.hpp"
 #include "util/u_json.hpp"
 
 using namespace std::string_view_literals;
@@ -51,10 +51,21 @@ Settings::SetInt32(const char *pchSection, const char *pchSettingsKey, int32_t n
 void
 Settings::SetFloat(const char *pchSection, const char *pchSettingsKey, float flValue, vr::EVRSettingsError *peError)
 {
-	if (pchSection == std::string_view{vr::k_pch_SteamVR_Section} && pchSettingsKey == "analogGain"sv) {
-		analog_gain = flValue;
-		context->add_vendor_event(vr::VREvent_SteamVRSectionSettingChanged);
-	}
+        if (peError != nullptr) {
+                *peError = vr::VRSettingsError_None;
+        }
+
+        if (pchSection == std::string_view{vr::k_pch_SteamVR_Section} && pchSettingsKey == "analogGain"sv) {
+                analog_gain = flValue;
+
+                if (!analog_gain_update_from_device && context != nullptr && context->hmd != nullptr) {
+                        context->hmd->apply_analog_gain(flValue);
+                }
+
+                if (!analog_gain_update_from_device && context != nullptr) {
+                        context->add_vendor_event(vr::VREvent_SteamVRSectionSettingChanged);
+                }
+        }
 }
 
 void
@@ -79,16 +90,30 @@ Settings::GetInt32(const char *pchSection, const char *pchSettingsKey, vr::EVRSe
 float
 Settings::GetFloat(const char *pchSection, const char *pchSettingsKey, vr::EVRSettingsError *peError)
 {
-	if (!strcmp(pchSection, vr::k_pch_SteamVR_Section)) {
-		if (!strcmp(pchSettingsKey, "analogGain")) {
-			return analog_gain;
-		}
-		if (!strcmp(pchSettingsKey, "ipd")) {
-			// Inform the SteamVR driver we have 0 ipd (in case) it factors this into the eye matrix.
-			return 0.f;
-		}
-	}
-	return 0.0;
+        if (!strcmp(pchSection, vr::k_pch_SteamVR_Section)) {
+                if (!strcmp(pchSettingsKey, "analogGain")) {
+                        if (context != nullptr && context->hmd != nullptr) {
+                                float brightness = 0.0f;
+                                if (context->hmd->get_brightness(&brightness) == XRT_SUCCESS) {
+                                        analog_gain = HmdDevice::brightness_to_analog_gain(brightness);
+                                }
+                        }
+                        if (peError != nullptr) {
+                                *peError = vr::VRSettingsError_None;
+                        }
+                        return analog_gain;
+                }
+                if (!strcmp(pchSettingsKey, "ipd")) {
+                        if (peError != nullptr) {
+                                *peError = vr::VRSettingsError_None;
+                        }
+                        if (context != nullptr && context->hmd != nullptr) {
+                                return context->hmd->get_ipd();
+                        }
+                        return 0.f;
+                }
+        }
+        return 0.0;
 }
 
 // Driver requires a few string settings to initialize properly
@@ -132,4 +157,18 @@ Settings::RemoveSection(const char *pchSection, vr::EVRSettingsError *peError)
 void
 Settings::RemoveKeyInSection(const char *pchSection, const char *pchSettingsKey, vr::EVRSettingsError *peError)
 {}
+
+void
+Settings::sync_analog_gain_from_device(float new_analog_gain, bool notify_context)
+{
+        bool previous_state = analog_gain_update_from_device;
+        analog_gain_update_from_device = true;
+        analog_gain = new_analog_gain;
+
+        if (notify_context && context != nullptr) {
+                context->add_vendor_event(vr::VREvent_SteamVRSectionSettingChanged);
+        }
+
+        analog_gain_update_from_device = previous_state;
+}
 // NOLINTEND(bugprone-easily-swappable-parameters)
