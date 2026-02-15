@@ -1306,6 +1306,13 @@ psvr2_setup_distortion_and_fovs(struct psvr2_hmd *hmd)
 	if (calibration_block.version_unk < 4) {
 		hmd->distortion_calibration[0] = -0.09919293;
 		hmd->distortion_calibration[2] = 0.09919293;
+
+		/*
+		 * Older firmware doesn't provide tilt values: use identity rotation
+		 * so both eyes still get a valid distortion transform.
+		 */
+		hmd->distortion_calibration[4] = 1.0f;
+		hmd->distortion_calibration[6] = 1.0f;
 	} else {
 		hmd->distortion_calibration[0] =
 		    (((-calibration_block.distortion_params[0] - calibration_block.distortion_params[6]) * 29.9 +
